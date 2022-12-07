@@ -1,0 +1,2260 @@
+---
+layout: post
+title: Solidity8.0 笔记
+date: 2022-08-18 16:45:30.000000000 +09:00
+tag: 区块链
+---
+
+## 0x01 8.0 新特性
+* safe math 安全数学解决溢出
+{% highlight ruby %}
+contract SafeMath {
+    // 这个函数运算是 SafeMath 溢出会 revert
+    function testUnderFlow() public pure returns (uint) {
+        uint x = 0;
+        x--;
+        return x;
+    }
+    // 没有 SafeMath，本例溢出后得到 uint 最大值
+    function testUnderUnFlow() public pure returns (uint) {
+        uint x = 0;
+        // unchecked 不进行溢出检查
+        unchecked { x--;}
+        return x;
+    }
+}
+{% endhighlight %}
+
+
+* custom errors 自定义错误
+
+{% highlight ruby %}
+contract CustomError {
+    address payable owner = payable(msg.sender);
+
+    // error 可以定义在 contract 内部，也可以定义在外部
+    // error 如果定义在 contract 外部，继承或 import 这个合约的合约都可以使用
+    error ErrorMessage(address caller);
+
+    function withdraw() public {
+        if (msg.sender != owner) {
+            // 错误信息是一个字符串，字符串大小影响 gas，字符串越大 gas 越多 
+            // 23642 gas
+            //revert("error");
+
+            // 这样可以减少 gas
+            revert ErrorMessage(msg.sender);
+
+        }
+        owner.transfer(address(this).balance);
+    }
+}
+{% endhighlight %}
+
+
+* function outside contract 函数在合约外定义：类似于 library 使用方式
+
+* import {symbol1 as alias, symbol2} from "filename"; 引用合约可以起别名
+* Salted contract creations / create2
+1. 原来使用 create2 时候是通过内联汇编形式实现的，即在内联汇编中加上 salt 再进行部署
+2. 一般部署合约的地址是用合约当前地址和 nonce 值进行运算的，create2 是把 nonce 换成了 salt 进行运算
+3. 这样 create2 就能做到合约还没部署就能知道合约的地址，uniswap 的配对合约就使用这样的方法
+
+{% highlight ruby %}
+contract Create2 {
+    function getBytes32(uint salt) external pure returns (bytes32) {
+        return bytes32(salt);
+    }
+
+    function getAddress(bytes32 salt, uint arg) external view returns (address) {
+        address addr = address(uint160(uint(keccak256(abi.encodePacked(
+            bytes1(0xff),
+            address(this),
+            salt,
+            keccak256(abi.encodePacked(
+                type(D).creationCode,
+                arg
+            ))
+        )))));
+        return addr;
+    }
+
+    address public deployedAddr;
+    function createDSalted(bytes32 salt, uint arg) public {
+        D d = new D{salt: salt}(arg); // 现在通过 new 即可
+        deployedAddr = address(d);
+    }
+}
+{% endhighlight %}
+
+
+## 0x02 HelloWorld
+{% highlight ruby %}
+// SPDX-License-Identifier: MIT
+// ^ compiler version must be greater than or equal to 0.8.10 and less than 0.9.0
+pragma solidity ^0.8.10;
+
+contract HelloWorld {
+    string public greet = "Hello World!";
+}
+部署后按钮是蓝色表示是 只读的方法
+{% endhighlight %}
+
+## 0x03 变量
+* uint 默认是 uint256 ，默认值是 0
+* int 默认是 int256，默认值是 0
+* int public minInt = type(int).min;
+* int public maxInt = type(int).max;
+* byte32 比 address 要长一些
+* bool 值，默认值是 false
+* address 默认值是 0，即 40 个 0， 0x0000000000000000000000000000000000000000
+* byte32 默认值是 0，64 个 0,0x0000000000000000000000000000000000000000000000000000000000000000
+
+
+### pure VS view
+* pure 和 view 都是只读方法修饰符
+* pure 不对链上游任何读写操作，只有局部变量，比如纯计算
+* view 获取状态变量或全局变量就需要用 view
+
+### 全局变量
+* msg.sender
+* block.timestamp
+* block.number
+
+### 常量
+* address public constant MY_ADDRESS = 0x6f6987f3768bb6224cedbb2bdfd3fe99b2d2e162
+* 常量可以节约一些 gas 
+
+### 支持三目运算符
+
+
+## 0x04 报错控制 error 
+8.0 新增自定义错误能节省 gas，可与 revert 一起用
+
+一般错误处理方式，都有状态回滚功能
+1. require
+2. revert，可与 revert 一起用
+3. assert，不包括报错信息
+
+报错信息字符串如果很长，则 gas 就很大，可以使用自定义 error 
+
+## Modifiers
+Modifiers 可以在函数前后调用
+
+{% highlight ruby %}
+    // Modifiers can be called before and / or after a function.
+    // This modifier prevents a function from being called while
+    // it is still executing.
+    modifier noReentrancy() {
+        require(!locked, "No reentrancy");
+
+        locked = true;      // 调用 modifier 这样代码，在函数执行前
+        _;                  // 调用 函数代码
+        locked = false;     // 调用 modifier 这样代码，在函数执行后
+    }
+
+    function decrement(uint i) public noReentrancy {
+        x -= i;
+
+        if (i > 1) {
+            decrement(i - 1);
+        }
+    }
+{% endhighlight %}
+
+## 构造函数与 onlyOwner
+只在合约部署时候被调用一次
+
+{% highlight ruby %}
+contract Ownable {
+    address public owner;
+
+    constructor() {
+        owner = msg.sender;
+    }
+
+    modifier onlyOwner() {
+        require(msg.sender == owner, "not owner");
+        _;
+    }
+
+    function setOwner(address newOwner) external onlyOwner {
+        require(newOwner != address(0), "invalid address");
+        owner = newOwner;
+    }
+
+}
+{% endhighlight %}
+
+## 函数返回值
+{% highlight ruby %}
+
+    // Return values can be assigned to their name.
+    // In this case the return statement can be omitted.
+    function assigned()
+        public
+        pure
+        returns (
+            uint x,
+            bool b,
+            uint y
+        )
+    {
+        x = 1;
+        b = true;
+        y = 2;         // Note 隐式返回
+    }
+
+    // Use destructuring assignment when calling another
+    // function that returns multiple values.
+    function destructuringAssignments()
+        public
+        pure
+        returns (
+            uint,
+            bool,
+            uint,
+            uint,
+            uint
+        )
+    {
+        (uint i, bool b, uint j) = returnMany();
+
+        // Values can be left out.
+        (uint x, , uint y) = (4, 5, 6); // Note 中间的数不用可省略，但 , 不能省略要占位
+
+        return (i, b, j, x, y);
+    }
+{% endhighlight %}
+
+
+## Array
+{% highlight ruby %}
+contract Array {
+
+    uint[] public nums = [1,2,3];       // 可变长度数组，只有可变数组可以 push 或 pop
+    uint[3] public numsFixed = [4,5,6]; // 定长数组
+
+    function examples() public {
+
+        // 删除数组元素，但数组长度不变，只是把元素改成默认值
+        delete nums[1];
+
+        nums.pop(); // 弹出最后一个元素
+
+        uint len = nums.length;
+
+        // create array in memory
+        uint[] memory a = new uint[](5);
+
+        // 内存中局部变量只能定义定长数组
+        // 动态数组只能是状态变量
+    }
+
+}
+
+
+
+{% endhighlight %}
+
+### remove 数组元素-方案一 移动，这样比较浪费 gas
+
+{% highlight ruby %}
+contract ArrayRemoveByShifting {
+    // [1, 2, 3] -- remove(1) --> [1, 3, 3] --> [1, 3]
+    // [1, 2, 3, 4, 5, 6] -- remove(2) --> [1, 2, 4, 5, 6, 6] --> [1, 2, 4, 5, 6]
+    // [1, 2, 3, 4, 5, 6] -- remove(0) --> [2, 3, 4, 5, 6, 6] --> [2, 3, 4, 5, 6]
+    // [1] -- remove(0) --> [1] --> []
+
+    uint[] public arr;
+
+    function remove(uint _index) public {
+        require(_index < arr.length, "index out of bound");
+
+        for (uint i = _index; i < arr.length - 1; i++) {
+            arr[i] = arr[i + 1];
+        }
+        arr.pop();
+    }
+
+    function test() external {
+        arr = [1, 2, 3, 4, 5];
+        remove(2);
+        // [1, 2, 4, 5]
+        assert(arr[0] == 1);
+        assert(arr[1] == 2);
+        assert(arr[2] == 4);
+        assert(arr[3] == 5);
+        assert(arr.length == 4);
+
+        arr = [1];
+        remove(0);
+        // []
+        assert(arr.length == 0);
+    }
+}
+
+
+{% endhighlight %}
+
+### remove 数组元素-方案二 替换
+这样的缺点是会打破元素顺序
+{% highlight ruby %}
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.10;
+
+contract ArrayReplaceFromEnd {
+    uint[] public arr;
+
+    // Deleting an element creates a gap in the array.
+    // One trick to keep the array compact is to
+    // move the last element into the place to delete.
+    function remove(uint index) public {
+    
+        // Move the last element into the place to delete
+        arr[index] = arr[arr.length - 1];
+        
+        // Remove the last element
+        arr.pop();
+    }
+
+    function test() public {
+        arr = [1, 2, 3, 4];
+
+        remove(1);
+        // [1, 4, 3]
+        assert(arr.length == 3);
+        assert(arr[0] == 1);
+        assert(arr[1] == 4);
+        assert(arr[2] == 3);
+
+        remove(2);
+        // [1, 4]
+        assert(arr.length == 2);
+        assert(arr[0] == 1);
+        assert(arr[1] == 4);
+    }
+}
+{% endhighlight %}
+
+## Mapping
+Mapping 中如果 key 不存在，返回对应值的类型的默认值，如 uint 默认值是 0
+{% highlight ruby %}
+contract Mapping {
+
+mapping(address => uint) public balances;
+mapping(address => mapping(address => bool)) public isFriends;
+
+function examples() public {
+    // delete 删除数据会将值恢复到默认值，而不是真正删除
+    delete balances[msg.sender];
+}
+}
+{% endhighlight %}
+
+## 结构体
+{% highlight ruby %}
+contract Structs {
+
+    struct Car {
+        string model;
+        uint year;
+        address owner;
+    }
+
+    Car public _car;
+    Car[] public _cars;
+    mapping(address => Car[]) public carsByOwner;
+
+    function examples() external {
+        // 这样必须按成员声明顺序进行赋值
+        Car memory toyota = Car("Toyota", 1990, msg.sender);
+        // 这样声明可以打乱成员的顺序
+        Car memory xiali = Car({year: 1980, owner: msg.sender, model: "xiali"});
+ 
+        Car memory tesla;
+        tesla.model = "Tesla";
+        tesla.year = 2010;
+        tesla.owner = msg.sender;
+        _cars.push(toyota);
+        _cars.push(xiali);
+        _cars.push(tesla);
+
+        Car storage car = _cars[0];
+        car.year = 1999;
+        delete car.owner; // 变为默认地址，0 地址
+
+        delete _cars[1]; // 删除索引为 1 的 car，使其成员都变成默认值
+
+    }
+
+}
+
+{% endhighlight %}
+
+## 枚举
+
+{% highlight ruby %}
+
+contract Enum {
+
+  enum Status {
+        None,
+        Pending,
+        Shipped,
+        Completed,
+        Rejected
+  }
+
+  Status public _status;
+
+  function ship() external {
+    _status = Status.Shipped;
+  }
+  // 恢复枚举为默认值，默认值就是它的第一个 case
+  function reset() external {
+    delete _status;
+  }
+}
+{% endhighlight %}
+
+## 通过 Proxy 合约部署其他合约
+* 先部署 Helper 合约
+* 再部署 Proxy 合约
+
+
+### 部署 TestContract1
+1. 调用 Helper getBytecode1 获得 TestContract1 的机器码
+2. 成功后在事件中找到 TestContract1 的地址，0x80922Db6752eCe1C2DeFA54Beb8FB984E649308B
+通过左边 atAddress 把 TestContract1 加载
+3. 获得 Proxy 合约地址 0xDA0bab807633f07f013f94DD0E6A4F96F8742B53
+4. 调用 Helper getCalldata 传入想当成 owner 的用户地址，获得 bytes
+0x13af40350000000000000000000000005b38da6a701c568545dcfcb03fcb875f56beddc4
+5. 调用 Proxy execute 方法传入 TestContract1 地址和 Helper getCalldata bytes
+
+
+### 部署 TestContract2
+1. 调用 Helper getBytecode2 传入参数比如 1 和 2，获得 TestContract2 的机器码, (这里省略了很多)
+//0x6080604052336000806101000a81548173ffffffffffffffffffffffffffffffffffffffff
+//021916908373ffffffffffffffffffffffffffffffffffffffff160217905550346001556040
+//516102cd3803806102cd83398181016040528101906100699190610093565b81600281905550
+//8060038190555050506100f9565b60008151905061008d816100e2565b92915050565b600080
+
+2. 调用 Proxy deploy 传入 getBytecode2 和主币数量
+3. 成功部署后通过 atAddress 把 TestContract2 加载, 查看 value 是主币的值
+
+{% highlight ruby %}
+
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+contract Proxy {
+    event Deploy(address);
+    // fallback 用于可能接收主币用
+    fallback() external payable {}
+
+    receive() external payable {}
+
+    function deploy(bytes memory _code) external payable returns (address addr) {
+        // 通过内联汇编 create 方法 进行合约创建部署
+        assembly {
+            // create(v, p, n)
+
+            // v = amount of ETH to send 本次合约带的币数量
+            // 参数一：一般 msg.value 就能获得合约带的主币数量，
+            // 但在内联汇编中不起作用 需要用 callvalue()
+
+            // p = pointer in memory to start of code 内存中机器码开始的位置
+            // 参数二：add(_code, 0x20) 要隔过去 0x20 的位置，表示跳过整个位置
+
+            // n = size of code 内存中机器码整个的大小
+            // 参数三：通过 mload(_code) 获取大小
+
+            // create 返回值是合约的地址 
+
+            addr := create(callvalue(), add(_code, 0x20), mload(_code))
+        }
+        // return address 0 on error
+        require(addr != address(0), "deploy failed");
+
+        emit Deploy(addr);
+    }
+
+    // 部署合约时候管理员默认是代理合约
+    // TestContract1 要设置管理员所以需要整个方法
+    function execute(address _target, bytes memory _data) external payable {
+        (bool success, ) = _target.call{value: msg.value}(_data);
+        require(success, "failed");
+    }
+}
+
+contract TestContract1 {
+    address public owner = msg.sender;
+
+    function setOwner(address _owner) public {
+        require(msg.sender == owner, "not owner");
+        owner = _owner;
+    }
+}
+
+contract TestContract2 {
+    address public owner = msg.sender;
+    uint public value = msg.value;
+    uint public x;
+    uint public y;
+
+    constructor(uint _x, uint _y) payable {
+        x = _x;
+        y = _y;
+    }
+}
+
+contract Helper {
+    // 获得部署合约的机器码，也叫 bytecode
+    function getBytecode1() external pure returns (bytes memory) {
+        bytes memory bytecode = type(TestContract1).creationCode;
+        return bytecode;
+    }
+    // 构造函数参数就是在 bytecode 之后的 16 进制数字
+    function getBytecode2(uint _x, uint _y) external pure returns (bytes memory) {
+        bytes memory bytecode = type(TestContract2).creationCode;
+        // 通过 encodePacked 打包将参数连接在 bytecode 之后
+        return abi.encodePacked(bytecode, abi.encode(_x, _y));
+    }
+
+    function getCalldata(address _owner) external pure returns (bytes memory) {
+        return abi.encodeWithSignature("setOwner(address)", _owner);
+    }
+}
+{% endhighlight %}
+
+
+## 数据的存储位置
+数据可以存在 3 个位置
+1. storage，状态变量
+2. memory，只在内存中生效，局部变量，或函数参数，比字符串（byte 数组）
+3. calldata，与 memory 比较类似，但只能用在输入的参数中，可以节约 gas
+* 比如一个函数调用两一个函数如果是 calldata 类型会直接把参数传过去
+* 如果调用的函数入参是 memory 需要把 calldata 复制一份变成 memory 这样会浪费 gas
+
+{% highlight ruby %}
+calldata 可以节约 gas
+{% endhighlight %}
+
+
+## TodoList
+{% highlight ruby %}
+
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+contract TodoList {
+    struct Todo {
+        string text;
+        bool completed;
+    }
+
+    Todo[] public todos;
+
+    function create(string calldata text_) external {
+        todos.push(Todo({
+            text: text_,
+            completed: false
+        }));
+    }
+
+    function updateText(uint index, string calldata text_) external {
+        // Note： 如果只改一个属性的值这样比较节省 gas
+        todos[index].text = text_;
+
+        // Note： 如果修改属性的值数量 > 1 这样比较节省 gas
+        Todo storage todo = todos[index];
+        todo.text = text_;
+    }
+
+    function get(uint index) external view returns (string memory, bool){
+        // storage gas, 29397 gas
+        // 直接从状态变量中读取，返回值经过一次 copy 到 memory 进行返回
+        // Note：storage 更节省 gas
+        Todo storage todo = todos[index];
+
+        // memory gas, 29480 gas 
+        // 从状态变量 copy 到 memory，返回时候会再 copy 一次，一共两次 copy
+        // Todo memory todo = todos[index];
+
+        return (todo.text, todo.completed);
+
+    }
+
+    function toggleCompleted(uint index) external {
+        todos[index].completed = !todos[index].completed;
+    }
+}
+{% endhighlight %}
+
+
+## Event
+* 记录体现在区块链浏览器上，和在交易记录中的 logs 里
+* emit event 方法它也是一个写入方法，不能标记为 view 或 pure
+{% highlight ruby %}
+contract Event {
+    // Event declaration
+    // Up to 3 parameters can be indexed.
+     
+    // Indexed parameters helps you filter the logs by the indexed parameter
+    // 之后可以用 web3 sdk 检索某地址发出的相关事件
+    // 一个事件有 indexed 索引的变量最多只能有 3 个
+    event Log(address indexed sender, string message);
+    event AnotherLog();
+
+    function test() public { 
+        emit Log(msg.sender, "Hello World!");
+        emit Log(msg.sender, "Hello EVM!");
+        emit AnotherLog();
+    }
+}
+{% endhighlight %}
+
+{% highlight ruby %}
+消息调用可以用状态变量也可以用 Event，Event 比较节省 gas
+{% endhighlight %}
+
+## 继承
+{% highlight ruby %}
+/* Graph of inheritance
+    A
+   / \
+  B   C
+ / \ /
+F  D,E
+
+*/
+// 多继承时候要梳理清楚继承关系
+// 最基类必须往前放
+// 以上图为例就是 A，B C，F D E
+
+contract A {
+    // virtual 表示可以继承重写
+    function foo() public pure virtual returns (string memory) {
+        return "A";
+    }
+    function bar() public pure virtual returns (string memory) {
+        return "A";
+    }
+    function a() public pure returns (string memory) {
+        return "a";
+    }
+}
+
+// Contracts inherit other contracts by using the keyword 'is'.
+contract B is A {
+    // Override A.foo()
+    function foo() public pure virtual override returns (string memory) {
+        return "B";
+    }
+    function bar() public pure virtual override returns (string memory) {
+        return "B";
+    }
+    function b() public pure returns (string memory) {
+        return "b";
+    }
+
+}
+
+// Note 这里要注意继承顺序，越基类越往前放
+contract C is A, B {
+    // override(A, B) 这里顺序无所谓
+    function foo() public pure virtual override(A, B) returns (string memory) {
+        return "C";
+    }
+    
+    function bar() public pure virtual override(B, A) returns (string memory) {
+        return "C";
+    }
+
+}
+
+{% endhighlight %}
+
+## 父级合约构造函数
+
+{% highlight ruby %}
+
+// 1 输入构造函数的方法，三种方式
+
+contract S {
+    string public _name;
+
+    constructor(string memory name_) {
+        _name = name_;
+    }
+
+}
+
+contract T {
+    string public _text;
+    constructor(string memory text_) {
+        _text = text_;
+    }
+}
+
+// 输入构造函数的方法 方式一
+// S("S") 向构造函数输入参数
+// 这种方式需要提前指定参数，但如果需要部署时候用户输入这样就不行
+contract U is S("S"), T("T") {
+
+}
+
+// 输入构造函数的方法 方式二
+// 
+contract V is S, T {
+    // S(name_) 将参数 name_ 传给父类 S
+    constructor(string memory name_, string memory text_) S(name_) T(text_) {
+    }
+}
+
+// 输入构造函数的方法 方式三：混合使用方式一和方式二
+
+
+// 2 构造函数的顺序
+// 按照继承的顺序进行初始化
+// 这里先执行 S 构造函数初始化，再执行 T 的，再执行 V2，顺序与 is 继承顺序有关
+// 与 constructor 后边  T(text_) 顺序无关
+contract V2 is S("S"), T {
+    constructor(string memory text_) T(text_) {
+
+    }
+}
+{% endhighlight %}
+
+## 调用父级合约的函数
+{% highlight ruby %}
+contract E {
+    event Log(string message);
+    function foo() public virtual {
+        emit Log("E.foo");
+    }
+
+    function bar() public virtual {
+        emit Log("E.bar");
+    }
+}
+
+// 调用父级合约函数两种方式
+contract F is E {
+    function foo() public virtual override  {
+        emit Log("F.foo");
+        // 方式一：直接调用父级合约函数
+        E.foo();
+    }
+
+    function bar() public virtual override {
+        emit Log("F.bar");
+        // 方式二：使用 super, 会自动找父级合约里的函数进行调用
+        super.bar();
+    }
+}
+
+contract G is E {
+    function foo() public virtual override  {
+        emit Log("G.foo");
+        // 方式一：直接调用父级合约函数
+        E.foo();
+    }
+
+    function bar() public virtual override {
+        emit Log("G.bar");
+        // 方式二：使用 super, 会自动找父级合约里的函数进行调用
+        super.bar();
+
+    }
+}
+
+contract H is F, G {
+    function foo() public override(F, G)  {
+        F.foo();
+        // 结果
+        // F.foo
+        // E.foo
+    }
+
+    function bar() public override(F, G) {
+        // 这里通过 super，则 F G 的 bar() 都会被执行
+        // 虽然 H 的 super 是 F G，F G 的 bar 都调用了 E 的 bar
+        // 但 E 的 bar 只会触发一次
+        super.bar();
+        // 结果
+        // G.bar
+        // F.bar
+        // E.bar
+    }
+}
+{% endhighlight %}
+
+## 可视范围
+* private：只在合约内部可见
+* internal：在合约内部和被继承的子合约都可见
+* public：范围最大，在内部、被继承的、外部都可见
+* external：仅在合约外部调用时候可见，内部是看不到的，即本合约不能调用，只有外部账户或合约可调用
+
+{% highlight ruby %}
+contract Base {
+    uint private x = 0;
+    uint internal y = 1;
+    uint public z = 2;
+
+    function privateFunc() private pure returns (uint) {
+
+    }
+    function internalFunc() internal pure returns (uint) {
+        
+    }
+    function publicFunc() public  pure returns (uint) {
+        
+    }
+
+    function externalFunc() external pure returns (uint) {
+        
+    }
+
+    function example() external view {
+        x + y + z;
+        privateFunc();
+        internalFunc();
+        publicFunc();
+
+        // 正常不能访问 external 的方法
+        // Tips：可以通过 this. 访问 external 方法，但比较浪费 gas，不建议
+        this.externalFunc();
+
+    }  
+
+}
+
+contract Child is Base {
+    function example2() external view {
+        // 不能访问 x 因为 x 是 private 的
+        y + z;
+
+        // 子合约只能访问父合约的 internal 和 public 成员和方法
+        internalFunc();
+        publicFunc();
+    }
+
+}
+
+Child 看不到 private 和 external 声明的成员和方法
+
+如果一个 C 合约调用 Base 只能看到 public 和 external 的成员和方法
+
+{% endhighlight %}
+
+## immutable 不可变变量
+
+{% highlight ruby %}
+
+// 如果提前不知道常量的值，需要部署合约后才能知道 可以使用 immutable
+// immutable 必须在部署合约时候给他赋值，才能像常量一样
+// 方式一： 直接赋值
+contract Immutable {
+    // immutable 可以在合约部署后赋值，赋值后是个常量
+    // 有 immutable 比没有 immutable 能节约一些 gas
+    address public immutable owner = msg.sender;
+}
+// 方式二：通过构造函数赋值
+
+contract Immutable2 {
+    address public immutable owner;
+
+    constructor() {
+        owner = msg.sender;
+    }
+
+
+}
+{% endhighlight %}
+
+
+## Payable
+* payable 用于接受以太坊主币的传入
+
+{% highlight ruby %}
+contract Payable {
+    // 定义 payable 变量可以发送以太坊主币
+    address payable public _owner;
+
+    constructor() {
+        _owner = payable(msg.sender);
+    }
+
+    // payable 方法可以接收以太坊主币
+    function deposit() external payable {
+
+    }
+
+    function getBalance() external view returns (uint) {
+        return address(this).balance;
+    }
+
+}
+
+{% endhighlight %}
+
+## 回退函数 fallback() or receive()
+* 何时调用 fallback 函数？
+1. 当你调用的函数在那个合约中不存在时
+2. 向合约发送以太坊主币时候
+3. 如果没有实现 receive 函数，也会调用 fallback 函数
+
+在 solidity8.0 回退函数有两种写法，fallback() 和 receive()
+
+{% highlight ruby %}
+// 调用流程图
+// fallback() 是一个后备函数
+// receive() 只负责接收主币
+/*
+    fallback() or receive() ?
+
+    Ether is sent to contract
+                |
+        is msg.data empty?
+            /       \ 
+          yes        no
+          /           \
+receive() exists?      fallback()
+        /     \
+      yes     no
+receice()     fallback()
+
+*/
+contract Fallback {
+
+    event Log(string func, address sender, uint value, bytes data);
+
+    // 写法一
+    // 1 不需要写 function
+    // 2 可以接受主币发送，但需要加 payable 才能接收主币的发送
+    // 3 调用合约不存在名称的函数
+    fallback() external payable  {
+        emit Log("fallback", msg.sender, msg.value, msg.data);
+    }
+
+    // 写法二
+    // receive 必须加 payable
+    // 只用于接收主币, 不接收数据 msg.data
+    receive() external payable {
+        emit Log("receive", msg.sender, msg.value, "");
+
+    }
+     
+}
+部署后可通过 CALLDATA 进行测试，传入 CALLDATA 就是 msg.data
+如果传入 data 会调用 fallback 函数
+
+{% endhighlight %}
+
+
+## 合约发送 ETH
+三种方式进行合约发送主币
+1. transfer：只会带 2300 gas，如果失败或目标地址拒收，会报异常然后 revert；Note 推荐使用 transfer
+2. send：只会带 2300 gas，并会返回一个 bool 值标记是否成功
+3. call：会发送所有剩余的 gas，并会返回一个 bool 值标记是否成功和一个 data 数据
+* 如果你发送主币的地址是一个合约，如果这个合约有返回值，就会在这个 data 里体现
+
+{% highlight ruby %}
+contract SendEther {
+
+    // 构造函数就传入主币
+    constructor() payable {
+    }
+
+    receive() external payable {
+    }
+
+    function sendViaTransfer(address payable _to) external payable {
+        _to.transfer(123);
+    }
+
+    function sendViaSend(address payable _to) external payable {
+        bool success = _to.send(123);
+        require(success, "send eth failed");
+    }    
+     
+    function sendViaCall(address payable _to) external payable {
+        // ("") 表示发送的数据，这里传入空
+        // call 返回两个参数
+        // 1 bool 表示是否成功
+        // 2 bytes memory data 如果是合约会返回 data，本例我们不考虑 data
+        // (bool success, bytes memory data) = _to.call{value: 123}("");
+        (bool success, ) = _to.call{value: 123}("");
+        require(success, "call call() failed");
+    }
+
+
+}
+contract ReceiveEther {
+
+    event Log(uint amount, uint gas);
+
+    receive() external payable {
+        // 接收主币数量，剩余 gas
+        emit Log(msg.value, gasleft());
+    }
+
+}
+{% endhighlight %}
+
+
+## 钱包合约
+{% highlight ruby %}
+contract EtherWallet {
+
+    address payable public owner;
+
+    modifier onlyOwner() {
+        require(msg.sender == owner, "onlyOwner can do it");
+        _;
+    }
+
+    constructor() {
+        // 这里需要 payable 强转下，不然编译不过
+        owner = payable(msg.sender);
+    }
+
+    // 调用 CALLDATA 即可发送主币
+    receive() external payable {
+
+    }
+
+    function withdraw(uint amount) external onlyOwner {
+        //owner.transfer(amount);
+        // 节省 gas
+        payable(msg.sender).transfer(amount);
+
+        // call 不需要把 msg.sender 强转为 payable
+        // (bool success, ) = msg.sender.call{value: amount}("");
+        // require(success, "Failed to send ether");
+
+    }
+
+    function getBalance() external view returns (uint) {
+        return address(this).balance;
+    }
+}
+
+
+{% endhighlight %}
+
+## 调用其他合约
+{% highlight ruby %}
+
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+contract Callee {
+    uint public x;
+    uint public value = 123;
+
+    function setX(uint _x) external {
+        x = _x;
+    }
+
+    function getX() external view returns (uint) {
+        return x;
+    }
+
+    function setXandReceiveEther(uint _x) external payable {
+        x = _x;
+        value = msg.value;
+    }
+
+    function getXandValue() external view returns (uint, uint) {
+        return (x, value);
+    }
+
+}
+
+contract Caller {
+    function setX(address _callee, uint _x) public {
+        // 方式一，把合约地址传入类型中 Callee(_callee) 就可以调用合约的函数了
+        Callee(_callee).setX(_x);
+    }
+
+    // 方式二，把合约类型当参数传入
+    function setX2(Callee _callee, uint _x) public {
+        _callee.setX(_x);
+    }
+
+    function getX(address _callee) external view returns (uint x) {
+        x = Callee(_callee).getX();
+    }
+
+    function setXFromAddress(address _addr, uint _x) public {
+        Callee callee = Callee(_addr);
+        callee.setX(_x);
+    }
+
+    function setXandSendEther(address _callee, uint _x) public payable {
+      // similar for call
+      //  方式三 类似 call
+      Callee(_callee).setXandReceiveEther{value: msg.value}(_x);
+    }
+
+    function getXandValue(address _callee) external view returns (uint x, uint value) {
+        (x, value) = Callee(_callee).getXandValue();
+    }
+}
+{% endhighlight %}
+
+## 接口合约
+{% highlight ruby %}
+contract Counter {
+    uint public count;
+    function inc() external {
+        count += 1;
+    }
+
+    function dec() external {
+        count -= 1;
+    }
+}
+
+interface ICounter {
+    
+    function count() external view returns (uint);
+    function inc() external;
+}
+
+contract CallInterface {
+
+    uint public count;
+
+    // 测试时传入 Counter 合约的地址
+    function examples(address counter_) external {
+        ICounter(counter_).inc();
+        count = ICounter(counter_).count();
+
+    }
+}
+{% endhighlight %}
+
+## 低级 call 调用
+* 如果合约没有实现 fallback 函数，调用没有实现的方法会报错，交易失败
+{% highlight ruby %}
+contract Callee {
+    string public _message;
+    uint public _x;
+
+    event Log(string message);
+
+    fallback() external payable {
+        emit Log("fallback did call");
+    }
+
+    // receive() external payable {
+    //     emit Log("receive did call");
+
+    // }
+
+    function foo(string memory message, uint x) external payable returns (bool, uint) {
+        _message = message;
+        _x = x;
+        return (true, 999);
+    }
+}
+
+contract Call {
+    bytes public _data;
+
+    function callFoo(address callee) external payable  {
+        // 通过低级 call 调用
+        // 参数一：函数签名 foo(string, uint256)
+        // "call foo" 是 foo 第一个 string 参数
+        // 123 是 foo 第二个参数
+
+        // .call{value: 111, gas: 5000} 携带的主币数量 111 wei
+        // 携带 5000 的 gas
+        // 5000 gas 调用 foo 修改两个变量值肯定不够，所以调用会失败
+        (bool success, bytes memory data) = callee.call{value: 111}(abi.encodeWithSignature(
+            "foo(string, uint256)", "call foo", 123
+            ));
+        require(success, "call foo failed");
+        _data = data;
+    }
+
+    function callDoNotExist(address callee) external {
+        (bool success, ) = callee.call(abi.encodeWithSignature("callDoNotExist()"));
+        require(success, "call callDoNotExist failed");
+    }
+
+}
+{% endhighlight %}
+
+
+## 委托调用
+{% highlight ruby %}
+/*
+常规调用
+
+A calls B, sends 100 wei
+        B calls C, sends 50 wei
+A ----> B ----> C
+                msg.sender = B
+                msg.value = 50
+                execute code on C's state variables， C 合约的状态变量改变
+                use ETH in C，钱留在 C 合约中
+
+delegate call
+A calls B, sends 100 wei
+        B delegatecall C
+A ----> B ----> C
+                msg.sender = A
+                msg.value = 100
+                execute code on B's state variables，B 合约的状态变量改变，C 合约的状态变量不改变
+                use ETH in B，钱留在 B 合约中
+*/
+
+// NOTE: Deploy this contract first
+// NOTE 被调用合约按照自己的状态变量布局位置取寻找 DelegateCall 合约中的变量位置
+// NOTE 所以被调用合约与委托调用合约的状态变量布局必须相同
+// NOTE or 在被调用合约状态变量后边加新的成员，这样是不会影响 DelegateCall 的
+contract TestDelegateCall {
+    // NOTE: storage layout must be the same as contract DelegateCall
+    // address public owner; // 放在这会影响变量 layout
+    uint public num;
+    address public sender;
+    uint public value;
+    address public owner; // 放在这就不影响变量 layout
+
+    function setVars(uint _num) public payable {
+        num = _num;
+        sender = msg.sender;
+        value = msg.value;
+    }
+}
+
+// 委托调用合约
+// 相当于通过调用其他合约，而改变自己合约变量或余额的值
+// 委托合约并没有改变状态变量值的逻辑
+// 测试时传入 TestDelegateCall 地址，调用 DelegateCall 的 setVars 方法
+// 可以修改 TestDelegateCall 逻辑后再部署，再调用 DelegateCall 的 setVars 方法
+// 这样就有了可升级合约的范式
+
+contract DelegateCall {
+    uint public num;
+    address public sender;
+    uint public value;
+
+    function setVars(address _contract, uint _num) public payable {
+        // DelegateCall's storage is set, TestDelegateCall is not modified.
+
+        // 使用签名，最终也会编译成 selector 方式
+        // (bool success, bytes memory data) = _contract.delegatecall(
+        //     abi.encodeWithSignature("setVars(uint256)", _num)
+        // );
+
+        // 使用 selector，能避免写函数签名时候写错
+        (bool success, bytes memory data) = _contract.delegatecall(abi.encodeWithSelector(TestDelegateCall.setVars.selector, _num));
+        require(success, "delegatecall failed");
+    }
+}
+{% endhighlight %}
+
+## 工厂合约
+{% highlight ruby %}
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.3;
+
+contract Account {
+    address public _bank;
+    address public _owner;
+
+    constructor(address owner) payable public  {
+        _bank = msg.sender;
+        _owner = owner;
+    }
+
+}
+
+// 如果 Account 合约与 AccountFactory 在不同文件，需要 import Account
+contract AccountFactory {
+
+    Account[] public _accounts;
+    // 生成 Account 合约地址后，可以用 at 加载 Account 合约
+    function createAccount(address owner) external payable {
+       // new Account(owner) 产生合约地址，赋值给 Account account
+       // Account 合约构造函数式 payable 的，通过 Account{value: 111} 这样传入主币
+       Account account = new Account{value: 111}(owner);
+       _accounts.push(account);
+
+    }
+}
+{% endhighlight %}
+
+
+## 库合约
+
+{% highlight ruby %}
+library Math {
+    // 一般库合约都是在内部使用
+    // 如果外部也需要用用 public，如果用了 external 内部就不能用了
+    function max(uint x, uint y) internal pure returns (uint) {
+        return x >= y ? x : y;
+
+    }
+
+}
+
+contract Test {
+    function testMax(uint x, uint y) external pure returns (uint) {
+        return Math.max(x, y);
+    }
+
+}
+
+
+
+// Array function to delete element at index and re-organize the array
+// so that their are no gaps between the elements.
+library Array {
+    function remove(uint[] storage arr, uint index) public {
+        // Move the last element into the place to delete
+        require(arr.length > 0, "Can't remove from empty array");
+        arr[index] = arr[arr.length - 1];
+        arr.pop();
+    }
+}
+
+contract TestArray {
+    // Note 把 Array 库应用到 uint[] 数组类型中
+    using Array for uint[];
+
+    uint[] public arr;
+
+    function testArrayRemove() public {
+        for (uint i = 0; i < 3; i++) {
+            arr.push(i);
+        }
+
+        arr.remove(1);
+
+        assert(arr.length == 2);
+        assert(arr[0] == 0);
+        assert(arr[1] == 2);
+    }
+}
+
+{% endhighlight %}
+
+## 合约中的哈希算法
+* 哈希可用于签名或获取一个 id
+* Note 先说结论：要使用 abi.encode 进行打包
+
+{% highlight ruby %}
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.3;
+
+/*
+encode "AAA" "BBB"
+0x00000000000000000000000000000000000000000000000000000000000000400000000000000000000
+0000000000000000000000000000000000000000000800000000000000000000000000000000000000000
+0000000000000000000000034141410000000000000000000000000000000000000000000000000000000
+0000000000000000000000000000000000000000000000000000000000000000003424242000000000000
+0000000000000000000000000000000000000000000000
+采用 abi 编码形式给每个参数补 0，
+
+encodePacked "AAA" "BBB"
+0x414141424242
+414141 表示 3 个 A
+424242 表示 3 个 B
+只是把字符串变成 16 进制，不会补 0
+不会补 0 就会造成一些漏洞出现，即出现哈希碰撞
+"AAAA" "BBB" 与 "AAA" "ABBB" 的 encodePacked 值相同
+
+结论：要使用 abi.encode 进行打包
+*/
+
+contract HashFunc {
+    // 智能合约的 hash 值有个一个特定的格式就是 byte32，是一个定长的字节类型
+    // 合约中特定的 hash 函数 keccak256 
+    // 使用哈希算法时候如果打包形式错误，可能造成碰撞
+    // 哈希值是 byte32 类型
+    // abi.encode 返回类型是 bytes 
+    function hash(string memory text, uint num, address addr) external pure returns (bytes32 value) {
+        // keccak256 需要打包参数
+        // abi.encode 打包两种方式
+        // 1 abi.encode 
+        // 2 abi.encodePacked 会有一定的压缩；返回一个 bytes 类型，这个值是不定长的
+        value = keccak256(abi.encodePacked(text, num, addr));
+    }
+    // 不定长的类型要加 memory 比如 bytes
+    function encode(string memory text0, string memory text1) external pure returns (bytes memory) {
+        return abi.encode(text0, text1);
+    }
+
+    function encodePacked(string memory text0, string memory text1) external pure returns (bytes memory) {
+        return abi.encodePacked(text0, text1);
+    }
+    // "AAAA" "BBB" 与 "AAA" "ABBB" 的哈希值相同
+    // 结论：要使用 abi.encode 进行打包
+    function collision(string memory text0, string memory text1) external pure returns (bytes32) {
+        return keccak256(abi.encodePacked(text0, text1));
+    }
+    
+    // 如果非要用 encodePacked 可以使用一个数字将字符串隔开，解决哈希碰撞问题
+    function collision1(string memory text0, uint x,string memory text1) external pure returns (bytes32) {
+        return keccak256(abi.encodePacked(text0, x, text1));
+    }
+
+}
+{% endhighlight %}
+
+
+## 验证签名 
+{% highlight ruby %}
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.3;
+
+/*
+    验证签名需要 4 个步骤
+    0 message to sign 将消息签名
+    1 hash(message) 将消息取哈希
+    2 sign(hash(message), private key) | offchain 将消息和私钥签名，在链下完成
+    
+    3 ecrecover(hash(message), signature) == signer 恢复签名(人)
+    恢复签名在智能合约中有一个专门的方法叫 ecrecover，有俩参数
+    参数一： 哈希后的消息原文
+    参数二：另一个就是链下的签名
+    经过 ecrecover 函数后得出的签名人地址，如果与你想要的签名地址一样就说明签名是正确的
+*/
+
+// 对消息签名的整个过程 还包括整个消息签名后的结果,和签名数据进行恢复的过程
+// 恢复签名可以验证整个签名和你想要验证的签名人是否相同
+contract VerifySign {
+    // 验证函数：判断 signer 是否与恢复出来的地址相同
+    // address signer 签名人的地址
+    // string memory message 要签名的消息
+    // bytes memory sign 签名的结果
+    function verify(address signer, string memory message, bytes memory sign) 
+    external pure returns (bool) 
+    {
+        bytes32 messageHash = getMessageHash(message);
+        bytes32 ethSignedMessageHash = getEthSignedMessageHash(messageHash);
+
+        return recover(ethSignedMessageHash, sign) == signer; 
+
+    }
+
+    // 把消息进行哈希运算
+    function getMessageHash(string memory message) public pure returns (bytes32) {
+        return keccak256(abi.encode(message));
+    }
+    // 两次哈希是防止量子计算破解
+    function getEthSignedMessageHash(bytes32 msgHash) public pure returns (bytes32) {
+        return keccak256(abi.encode("\x19Ethereum Signed Message:\n32", msgHash));
+    }
+    
+    function recover(bytes32 signedHash, bytes memory sign) public pure returns (address) {
+        // r s v 查下非对称加密算法
+        // 非对称加密算法会把你的信息签名成 r s v
+        // r s v 拼在一起就是签名的数据
+        (bytes32 r, bytes32 s, uint8 v) = _split(sign);
+        // ecrecover 是智能合约提供的函数，返回 address
+        return ecrecover(signedHash, v, r, s);
+    }
+
+    function _split(bytes memory sign) 
+    internal pure returns (bytes32 r, bytes32 s, uint8 v) {
+        // 判断输入长度是 65 位的长度
+        require(sign.length == 65, "invalid signature length ");
+        // 想把输入的签名参数进行分割，就必须使用内联汇编进行分割，
+        // 因为合约中没有其他的分割方案
+        // 原理就是 签名的 bytes 就是用 rsv 三个元素拼接出来的
+        // so r 就是占签名的前 32 位
+        // s 就是占接下来 32 位
+        // v 就是 uint8 最后一位
+
+
+        // 内联汇编
+        assembly {
+            // mload 就是内存中读取功能
+            // 32 表示跳过 32 位的长度，取获取到 sign 中 32 位之后的 32 位
+            r := mload(add(sign, 32)) // 读取前 32 位
+            s := mload(add(sign, 64)) // 读取 33~64 位
+            v := byte(0, mload(add(sign, 96))) // byte(0 获取 1 位 uint8
+        }
+
+    }
+}
+/*
+测试
+1 调用 getMessageHash("secret message")
+0x5e08c4cc551ef7cb9a7bb4d8353b806b0c2e8eecac6a8840122b1d6f42d77d4f
+
+2 打开 Chrome 浏览器 F12 控制台输入 ethereum.enable()
+前提是装了 MetaMask 和 web3.js
+安装步骤，参考 https://web3js.readthedocs.io/en/v1.7.5/getting-started.html#adding-web3
+1. $npm: npm install web3
+2. $yarn: yarn add web3
+出现 fulfilled 说明开启成功
+
+3 在控制台输入 
+console> account
+console> hash = 0x5e08c4cc551ef7cb9a7bb4d8353b806b0c2e8eecac6a8840122b1d6f42d77d4f
+进行签名调用以太坊的签名程序, ，
+console> ethereum.request({method: "personal_sign", params: [account, hash]})
+会打开 metamask 点确认，得到签名结果 sign
+
+4 getEthSignedMessageHash 0x5e08c4cc551ef7cb9a7bb4d8353b806b0c2e8eecac6a8840122b1d6f42d77d4f
+得到
+
+5 recover 第 4 步结果，和 sign => gain address 
+6 调用 verify 传入 签名人地址，消息，sign
+
+*/
+{% endhighlight %}
+
+
+## 权限控制合约
+{% highlight ruby %}
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.3;
+
+contract AccessControl {
+    // 核心是 mapping
+    // 用 bytes32 代替字符串，是因为字符串消耗的 gas 比 bytes32 要多很多
+    mapping(bytes32 => mapping(address => bool)) public roles;
+
+    // 定义角色名称
+    // ADMIN 存储管理员用户
+    // 0x2b5d4234a022cfb9821caf2418c4d73719f7f89f7957964f3f4d650d113d37a1
+    bytes32 private constant ADMIN = keccak256(abi.encode("ADMIN"));
+    // 0x55e026565094d87b9053095739f9e8de176cd0013f65014214e801aedaa815ab
+    bytes32 private constant USER = keccak256(abi.encode("USER"));
+
+    // 为了方便在链外查找可以加上 indexed 修饰符
+    // 升级权限
+    event GrantRole(bytes32 indexed role, address indexed account);
+    event RevokeRole(bytes32 indexed role, address indexed account);
+
+    modifier onlyRole(bytes32 role) {
+        require(roles[role][msg.sender], "not authorized");
+        _;
+    }
+
+    constructor() {
+        _grantRole(ADMIN, msg.sender);
+    }
+
+    // 升级权限函数
+    function _grantRole(bytes32 role, address account) internal {
+        roles[role][account] = true;
+        // 修改了变量的值一般要 emit 个 event
+        emit GrantRole(role, account);
+    }
+
+    function grantRole(bytes32 role, address account) external onlyRole(ADMIN) {
+        _grantRole(role, account);
+    }
+
+    function revokeRole(bytes32 role, address account) external onlyRole(ADMIN) {
+        roles[role][account] = false;
+        emit RevokeRole(role, account);
+
+    }
+}
+{% endhighlight %}
+
+
+## 自毁合约
+{% highlight ruby %}
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.3;
+
+// 智能合约自带的 selfdestruct 函数
+/*
+    智能合约自带的 selfdestruct 函数，两个功能
+    1 delete contract 删除合约
+    2 force send Ether to any address 强制发送主币到一个地址
+*/
+
+contract Kill {
+
+    constructor() payable {}
+
+    function kill() external {
+        // selfdestruct 把合约中的余额发送到 msg.sender 用户账户中
+        // selfdestruct 是强制发送当前合约余额，所以
+        // 如果 msg.sender 是一个合约地址，会强制让它接收
+        selfdestruct(payable(msg.sender)); 
+         
+    }
+    // 测试函数，用于测试合约自毁后应该不能调用
+    // 自毁后，调用 test 应该没有返回值
+    function test() external pure returns (uint x) {
+        x = 222 ;
+    }
+}
+
+contract Helper {
+    function getBalance() external view returns (uint) {
+        return address(this).balance;
+    }
+    // 调用 kill 传入 Kill 合约地址
+    function kill(Kill _kill) external {
+        _kill.kill();
+    }
+
+}
+//
+/*
+    1 先部署 Kill 合约带 1 eth
+    2 再部署 Helper 合约
+    3 调用 Helper 的 kill 函数，传入 Kill 合约地址
+    4 再调用 Helper 的 getBalance 就能看到余额了
+*/
+{% endhighlight %}
+
+
+## PiggyBank
+{% highlight ruby %}
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.3;
+
+contract PiggyBank {
+    // 0x0000000000000000000000000000000000000000
+    // 合约销毁后 owner 地址是 0x0
+    address public owner = msg.sender;
+
+    event Deposit(uint amount);
+    event Withdraw(uint amount);
+
+    modifier onlyOwner() {
+        require(msg.sender == owner, "only owner can do it");
+        _;
+    }
+
+    receive() external  payable {
+        emit Deposit(msg.value);
+    }
+
+    function withdraw() external onlyOwner {
+
+        emit Withdraw(address(this).balance); 
+
+        // 使用状态变量会多消耗 gas 所以直接用 msg.sender
+        selfdestruct(payable(msg.sender));
+    }
+
+
+}
+{% endhighlight %}
+
+## ERC20
+
+{% highlight ruby %}
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.3;
+
+interface IERC20 {
+    // 当前合约的 token 总量
+    function totalSupply() external view returns (uint256);
+
+    // 当前余额
+    function balanceOf(address _owner) external view returns (uint256 balance);
+
+    // 将账户余额发送到 to 地址
+    function transfer(address _to, uint256 _value) external returns (bool success);
+
+    // 把一个账户的钱批准给另一个账户
+    function approve(address _spender, uint256 _value) external returns (bool success);
+
+    // 查询一个账户对另一个账户的批准额度
+    function allowance(address _owner, address _spender) external view returns (uint256 remaining);
+
+    // 与 approve 联合使用，把一个账户的 token 发送给另一个账户
+    function transferFrom(address _from, address _to, uint256 _value) external returns (bool success);
+
+
+    event Transfer(address indexed _from, address indexed _to, uint256 _value);
+    event Approval(address indexed _owner, address indexed _spender, uint256 _value);
+
+}
+
+contract ERC20 is IERC20 {
+    address public owner = msg.sender;
+
+    uint256 public override totalSupply;
+
+    mapping(address => uint) public override balanceOf;
+
+    // 批准的映射
+    mapping(address => mapping(address => uint)) public override allowance;
+
+    // 常用大写
+    string public name = "Test";
+    string public symbol = "TEST";
+
+    // token 精度，常用 18 位精度
+    // 1 eth = 1 和 18 个 0
+    uint8 public decimals = 18;
+
+    modifier onlyOwner() {
+        require(msg.sender == owner, "only owner can do it");
+        _;
+    }
+
+
+    // 将账户余额发送到 to 地址
+    function transfer(address _to, uint256 _value) external override returns (bool success) {
+        success = false;
+        balanceOf[msg.sender] -= _value;
+        balanceOf[_to] += _value;
+        emit Transfer(msg.sender, _to, _value);
+        success = true;
+    }
+
+        // 把一个账户的钱批准给另一个账户
+    function approve(address _spender, uint256 _value) external override returns (bool success) {
+        success = false;
+        allowance[msg.sender][_spender] = _value;
+        emit Approval(msg.sender, _spender, _value);
+        success = true;
+    }
+
+    // 与 approve 联合使用，把一个账户的 token 发送给另一个账户
+    function transferFrom(address _from, address _to, uint256 _value) external override returns (bool success) {
+        success = false;
+        allowance[_from][msg.sender] -= _value;
+        balanceOf[_from] -= _value;
+        balanceOf[_from] += _value;
+        emit Transfer(_from, _to, _value);
+        success = true;
+    }
+
+    function mint(uint amount, address _to) external onlyOwner {
+        balanceOf[_to] += amount;
+        totalSupply += amount;
+        // 从 0 地址发出的都是铸币事件
+        emit Transfer(address(0), _to, amount);
+
+    }
+
+    function burn(uint amount, address _from) external onlyOwner {
+        balanceOf[_from] -= amount;
+        totalSupply -= amount;
+        emit Transfer(_from, address(0), amount);
+    }
+
+}
+{% endhighlight %}
+
+## 多签钱包
+{% highlight ruby %}
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.3;
+
+
+// 只有钱包多个人同意才能将钱转出
+/*
+    多签钱包
+
+只有钱包多个人同意才能将钱转出
+    
+*/
+
+
+contract MultiSignWallet {
+    // 存款事件
+    event Deposit(address indexed sender, uint amount);
+
+    // 提交一个交易的申请
+    event Submit(uint indexed txIndex);
+
+    // 签名人进行批准
+    event Approve(address indexed owner, uint indexed txIndex);
+
+    // 撤销批准
+    event Revoke(address indexed owner, uint indexed txIndex);
+
+    // 执行转账交易
+//    event Execute(uint indexed txIndex);
+    event Execute(uint indexed txIndex);
+
+    // 保存发出主币的交易数据
+    struct Transaction {
+        address to; // 发起提议,即发生主币的目标地址
+        uint value;
+        bytes data;
+        bool executed;
+    }
+
+
+    // 合约拥有者，即签名人数组
+    address[] public owners;
+
+    // 返回 true 表示是合约的签名人，因为数组不方便查找
+    mapping(address => bool) public isOwner;
+
+    // 最少满足签名人数量
+    uint public requireSignCount;
+
+    // 数组的索引值就是交易的 id 号
+    Transaction[] public transactions;
+
+    // uint 交易号 => address 签名人 => bool 是否批准了这个交易
+    mapping(uint => mapping(address => bool)) public approved;
+
+
+    modifier onlyOwner() {
+        require(isOwner[msg.sender], "is ont owner");
+        _;
+    }
+
+    modifier txExists(uint _txId) {
+        // 交易 id 是数组索引，所以 _txId 小于数组长度就说明交易存在
+        require(_txId < transactions.length, "tx does not exist");
+        _;
+    }
+
+    modifier notApproved(uint _txId) {
+        require(!approved[_txId][msg.sender], "tx already approved");
+        _;
+    }
+
+    modifier notExecuted(uint _txId) {
+        require(transactions[_txId].executed, "tx already executed");
+        _;
+    }
+
+    constructor(address[] memory _owners, uint _required) {
+        require(_owners.length > 0, "owners required");
+        require(_required > 0 && _required <= _owners.length, "invalid required");
+
+        for (uint i; i < _owners.length; i++) {
+            address owner = _owners[i];
+            require(owner != address(0), "invalid owner");
+            require(!isOwner[owner],"owner did add");
+            isOwner[owner] = true;
+            owners.push(owner);
+        }
+        requireSignCount = _required;
+    }
+
+    receive() external payable {
+        emit Deposit(msg.sender, msg.value);
+    }
+
+    function submit(address _to, uint _value, bytes calldata _data) external onlyOwner {
+        transactions.push(Transaction({
+            to: _to,
+            value: _value,
+            data: _data,
+            executed: false
+        }));
+        emit Submit(transactions.length - 1);
+    }
+
+    function approve(uint _txId) 
+    external 
+    onlyOwner 
+    txExists(_txId)
+    notApproved(_txId)
+    notExecuted(_txId) {
+        approved[_txId][msg.sender] = true;
+        emit Approve(msg.sender, _txId);
+    }
+
+    function _getApprovalCount(uint _txId) private view returns (uint count) {
+        for(uint i; i < owners.length; i++) {
+            if (approved[_txId][owners[i]]) {
+                count += 1;
+            }
+        }
+        return count;
+    }
+
+    function execute(uint _txId) external txExists(_txId) notExecuted(_txId) {
+        require(_getApprovalCount(_txId) >= requireSignCount, "approvals < required");
+        Transaction storage transaction = transactions[_txId];
+        transaction.executed = true;
+        (bool success, ) = transaction.to.call{value: transaction.value}(
+            transaction.data
+        );
+        
+        require(success, "tx failed");
+
+        emit Execute(_txId);
+    }
+
+    function revoke(uint _txId) external onlyOwner txExists(_txId) {
+        require(approved[_txId][msg.sender], "tx not approved");
+        approved[_txId][msg.sender] = false;
+        emit Revoke(msg.sender, _txId);
+    }
+}
+{% endhighlight %}
+
+## 荷兰拍卖
+{% highlight ruby %}
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.3;
+
+
+/*
+荷兰拍卖合约
+有一个开始价格，然后随时间增加价格减少，直到第一个喊价的人，购买成功，拍卖结束
+
+
+ERC721 合约必须 approve DutchAuction 的地址，DutchAuction 才能使用 transferFrom 方法
+*/
+
+interface IERC721 {
+    
+    function transferFrom(address _from, address _to, uint _nftId) external;
+}
+
+
+contract DutchAuction {
+
+    uint private constant DURATION = 7 days;
+
+    IERC721 public immutable nft;
+
+    uint public immutable nftId;
+
+    address payable  public immutable seller;
+
+    // 开拍的价格
+    uint public immutable startPrice; 
+
+    // 开拍时间
+    uint public immutable startAt;
+
+    // 过期时间
+    uint public immutable expiresAt;
+
+    // 每秒的折扣率
+    uint public immutable discountRate;
+
+
+    constructor(uint _startPrice, uint _discountRate, address _nft, uint _nftId) {
+        seller = payable(msg.sender);
+        startPrice = _startPrice;
+        discountRate = _discountRate;
+        // 开始时间等于当前区块时间戳
+        startAt = block.timestamp;
+        expiresAt = block.timestamp + DURATION; 
+
+        require(_startPrice >= _discountRate * DURATION, "start price < discount");
+
+        nft = IERC721(_nft);
+        nftId = _nftId;
+
+    }
+
+    // 获取当前的拍品价格
+    function getPrice() public view returns (uint) {
+        uint timeElapsed = block.timestamp - startAt;
+        uint discount = discountRate * timeElapsed;
+        return startPrice - discount;
+    }
+
+    // 购买的函数
+    function buy() external payable {
+        require(block.timestamp < expiresAt, "auction expired");
+        uint price = getPrice();
+        require(msg.value >= price, "ETH < price");
+
+        nft.transferFrom(seller, msg.sender, nftId);
+
+        // 用户购买金额可能大于拍卖价格，需要把多余的钱退回给用户
+        uint refund = msg.value - price;
+        if (refund > 0) {
+            payable(msg.sender).transfer(refund);
+        }
+        // 将剩余主币发送给 拍卖者，并且自毁，因为拍卖结束合约就没有用了
+        selfdestruct(seller);
+    }
+
+}
+
+{% endhighlight %}
+
+## 英式拍卖
+{% highlight ruby %}
+
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.3;
+
+interface IERC721 {
+    
+    function transferFrom(address _from, address _to, uint _nftId) external;
+}
+
+contract EnglishAuction {
+
+    event Start();
+
+    event Bid(address indexed sender,uint amount);
+    event WithDraw(address indexed bidder,uint amount);
+
+    event End(address highestBidder, uint amount);
+
+    IERC721 public immutable nft;
+    uint public immutable nftId;
+
+    address payable public immutable seller;
+
+    // 时间用 uint32 足够
+    uint32 public endAt;
+    // 是否已经开始
+    bool public started;
+
+    // 是否已经结束
+    bool public ended;
+
+    address public highestBidder;
+
+    uint public highestBid;
+    // 出价人的出价
+    mapping(address => uint) public bids;
+
+    constructor(address _nft, uint _nftId, uint _startBid) {
+        nft = IERC721(_nft);
+        nftId = _nftId;
+        seller = payable(msg.sender);
+        highestBid = _startBid;
+    }
+
+    function start() external {
+        require(msg.sender == seller, "not seller");
+        require(!started, "started");
+
+        started = true;
+
+        endAt = uint32(block.timestamp + 60);
+        nft.transferFrom(seller, address(this), nftId);
+
+        emit Start();
+    }
+
+    function bid() external payable {
+        require(started, "not start");
+        require(block.timestamp < endAt, "is end");
+        require(msg.value > highestBid, "value < highest bid");
+
+
+
+        highestBid = msg.value;
+        highestBidder = msg.sender;
+
+        bids[msg.sender] += highestBid;
+
+        // if (highestBidder != address(0)) {
+        //     bids[highestBidder] += highestBid;
+        // }
+
+        emit Bid(msg.sender, msg.value);
+
+    }
+
+    function withdraw() external {
+        uint bal = bids[msg.sender];
+        bids[msg.sender] = 0;
+        payable(msg.sender).transfer(bal);
+
+        emit WithDraw(msg.sender, bal);
+
+    }
+
+    // 任何人可调用
+    function end() external {
+        require(started, "not started");
+        require(!ended, "ended");
+
+        require(block.timestamp >= endAt, "not end");
+        ended = true;
+
+        // 如果有人出过价
+        if (highestBidder != address(0)) { 
+            nft.transferFrom(address(this), highestBidder, nftId);
+            seller.transfer(highestBid);
+        } else {
+            // 没有人出价 nft 退回给销售者
+            nft.transferFrom(address(this), seller, nftId);
+        }
+        emit End(highestBidder, highestBid);
+    }
+
+}
+{% endhighlight %}
+
+## 众筹合约
+{% highlight ruby %}
+
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.3;
+
+interface IERC20 {
+    // 当前合约的 token 总量
+    function totalSupply() external view returns (uint256);
+
+    // 当前余额
+    function balanceOf(address _owner) external view returns (uint256 balance);
+
+    // 将账户余额发送到 to 地址
+    function transfer(address _to, uint256 _value) external returns (bool success);
+
+    // 把一个账户的钱批准给另一个账户
+    function approve(address _spender, uint256 _value) external returns (bool success);
+
+    // 查询一个账户对另一个账户的批准额度
+    function allowance(address _owner, address _spender) external view returns (uint256 remaining);
+
+    // 与 approve 联合使用，把一个账户的 token 发送给另一个账户
+    function transferFrom(address _from, address _to, uint256 _value) external returns (bool success);
+
+
+    event Transfer(address indexed _from, address indexed _to, uint256 _value);
+    event Approval(address indexed _owner, address indexed _spender, uint256 _value);
+
+}
+
+// 测试时别忘了 ERC20 合约要 approve 众筹合约地址
+contract CrowdFund {
+
+    event Launch(
+        uint id, 
+        address indexed creator, 
+        uint goal, 
+        uint32 startAt, 
+        uint32 endAt
+    );
+
+    event Cancel(uint id);
+
+    event Pledge(uint indexed id, address indexed caller, uint amount);
+    event Unpledge(uint indexed id, address indexed caller, uint amount);
+
+    event Claim(uint id);
+
+    event Refund(uint indexed id, address indexed refunder, uint amount);
+
+
+    struct Campaign {
+        address creator;
+        uint goal;
+        uint pledged; // 已经参与的 token 数量
+        uint32 startAt;
+        uint32 endAt;
+        bool claimed; // true 表示被创建者领走了
+    }
+
+    IERC20 public immutable token;
+    uint public count;
+    mapping(uint => Campaign) public campaigns;
+    // 众筹活动 id，活动地址， 对应筹款活动金额
+    mapping(uint => mapping(address => uint)) public pledgedAmount ;
+
+    // 传入 ERC20 合约地址
+    constructor(address _token) {
+        token = IERC20(_token);
+    }
+
+    // 创建众筹
+    function launch(uint _goal, uint32 _startAt, uint32 _endAt) external {
+        require(_startAt >= block.timestamp, "start at < now");
+        require(_endAt >= _startAt, "end at < start at");
+        require(_endAt <= block.timestamp + 90 days, "end at > max duration");
+
+        count += 1;
+        campaigns[count] = Campaign({
+            creator: msg.sender,
+            goal: _goal,
+            pledged: 0,
+            startAt: _startAt,
+            endAt: _endAt,
+            claimed: false
+        });
+
+        emit Launch(count, msg.sender, _goal, _startAt, _endAt);
+
+    }
+
+    // 取消众筹
+    function cancel(uint _id) external {
+
+        Campaign memory campaign = campaigns[_id];
+        require(msg.sender == campaign.creator, "not creator");
+        require(block.timestamp < campaign.startAt, "started");
+
+        delete campaigns[_id];
+
+        emit Cancel(_id);
+
+    }
+
+    // 参与众筹
+    function pledge(uint _id, uint amount) external {
+        Campaign storage campaign = campaigns[_id];
+        require(block.timestamp >= campaign.startAt, "not start");
+        require(block.timestamp <= campaign.endAt, "ended");
+
+        campaign.pledged += amount;
+        pledgedAmount[_id][msg.sender] += amount;
+        token.transferFrom(msg.sender, address(this), amount);
+        
+        emit Pledge(_id, msg.sender, amount);
+    }
+
+    // 撤销自己之前的众筹
+    function unpledge(uint _id, uint amount) external {
+        Campaign storage campaign = campaigns[_id];
+        require(block.timestamp <= campaign.endAt, "ended");
+
+        campaign.pledged -= amount;
+        pledgedAmount[_id][msg.sender] -= amount;
+        token.transfer(msg.sender, amount);
+
+        emit Unpledge(_id, msg.sender, amount);
+
+    } 
+
+    // 达到了目标 众筹人可以提现
+    function claim(uint _id) external {
+        Campaign storage campaign = campaigns[_id];
+        require(msg.sender == campaign.creator, "not creator");
+        require(block.timestamp > campaign.endAt, "not ended");
+        require(campaign.pledged > campaign.goal, "pledged < goal");
+        require(!campaign.claimed, "claimed");
+
+
+        campaign.claimed = true;
+        // 使用 msg.sender 比 campaign.creator 节省 gas
+        token.transfer(msg.sender, campaign.pledged);
+        emit Claim(_id);
+
+    }
+    
+    // 没有达到众筹目标，即众筹失败，则用户可以把钱取回
+    function refund(uint _id) external {
+        Campaign storage campaign = campaigns[_id];
+        require(block.timestamp > campaign.endAt, "not ended");
+        require(campaign.pledged < campaign.goal, "pledged > goal");
+
+        uint bal = pledgedAmount[_id][msg.sender];
+        pledgedAmount[_id][msg.sender] = 0;
+        token.transfer(msg.sender, bal);
+
+        emit Refund(_id, msg.sender, bal);
+
+    }
+
+
+}
+{% endhighlight %}
+
+{% highlight ruby %}
+{% endhighlight %}
+

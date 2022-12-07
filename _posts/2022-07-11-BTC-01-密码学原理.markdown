@@ -1,0 +1,83 @@
+---
+layout: post
+title: BTC-01-密码学原理
+date: 2022-07-1 16:45:30.000000000 +09:00
+tag: 区块链
+---
+
+比特币主要用到了密码学中两个功能：
+1. 哈希
+2. 签名
+
+## 0x01 哈希函数特性
+1 collision resistance，即没有什么高效的方法去制造哈希碰撞
+* 哈希函数的 collision resistance 特性是靠时间检验出来的，不能是那个专家说就是
+
+2 hiding 单向的，只能从输入到哈希值（前提是输入空间足够大，并且结果分布比较均匀）
+
+Collision resistance 和 hiding 的结合实现了 Digital commitment。Digital commitment 也叫 Digital equivalent of a sealed envelope，
+即预测放到信封里，算下哈希值，如果结果出来后打开信封查看哈希值一样说明没有被篡改。比如预测股票涨跌，可以将预测的哈希值公布出去，之后验证即可。
+
+Note：但股票是有限的，即输入空间范围较小
+{% highlight ruby %}
+所以实际操作中要对 "输入 + nonce（随机数）"进行操作
+例如 X -> Hash(X || nonce) , X 拼上 nonce 再进行哈希
+{% endhighlight %}
+
+除上述两个性质外，BTC 还要求第三个性质，即 Puzzle Friendly
+
+3 Puzzle Friendly，这个特性是比特币必须的，上边两个都是密码学的，结果不可预测，看输入很难知道哈希值是什么
+
+挖矿就是试 nonce （随机数），使 Hash(block header｜｜nonce ) <= target, 即可出块
+ Puzzle Friendly 即没有捷径，必须通过很多的工作量，一个一个 nonce 去试
+挖矿很难，验证很简单
+
+{% highlight ruby %}
+挖矿很难，验证很简单 在设计 mining puzzle 时候要注意这个性质
+{% endhighlight %}
+
+比特币中的哈希函数 SHA-256，SHA-256 满足以上三个特性。哈希值长度固定，一般为 160bit~512bit。
+
+### 常用的哈希函数
+* MD5：128 bit，已破解
+* SHA-0：160 bit，已破解
+* SHA-1：160 bit，已破解
+* SHA-2系列：224/256/384/512 bit；BTC 用的 256 bit
+* SHA-2系列：输出 224/256/384/512 bit；内部状态 1600 bit
+* SM3 国密哈希函数： 512 bit
+
+
+
+## 0x02 签名
+开户就是创建公钥-私钥（ public key，private key ）。对称加密的弱点是秘钥的分发很难。
+
+公钥就是银行账户。私钥就是银行账户密码。
+
+### 公钥-私钥还可以用于签名
+
+256 位哈希生成公私钥冲突是微乎其微的。生成公私钥和签名时都需要有好的随机源
+
+![](/assets/images/fisco/weimang/sign.png)
+
+
+### 公钥另一个作用：作为地址
+
+
+{% highlight ruby %}
+BTC 系统中一般是先对一个 message 取一个哈希，然后再对这个哈希签名
+签名要保证有好的的随机源，不然可能会泄露私钥
+{% endhighlight %}
+
+
+256 位哈希函数输出范围是2的256次方
+
+## 0x03 地址
+比特币地址是用公钥的哈希值计算出来的，Base58 一共有 58（62-4，去掉 4 个容易混淆的） 个字母
+
+
+格式 
+* 0x00+公钥哈希+校验和（4字节），整个地址以 Base58 编码
+* Address = Base(0x00+RIPEMD-160(SHA256(PublicKey))+checksum)
+
+
+https://en.bitcoin.it/wiki/Script

@@ -1,0 +1,170 @@
+---
+layout: post
+title: ### -2022-02-09-多线程(三).markdown
+date: 2022-02-09 20:50:30.000000000 +09:00
+categories: [iOS, 底层原理, 多线程]
+tags: [ObjC, 底层原理, 多线程]
+---
+
+### atomic
+
+atomic 原子性, iOS 很少用，Mac 常用，比较耗性能，因为每次调用 setter getter 方法都加锁。给属性加上 atomic 修饰，可以保证属性 setter 和 getter 都是原子性操作，也就是保证 setter 和 getter 都是线程同步的。但它并不能保证使用属性过程是线程安全的，即 atomic 只保证 setter 和 getter 是安全的。
+
+runtime 源码
+{% highlight ruby %}
+static inline void reallySetProperty(id self, SEL \_cmd, id newValue, ptrdiff_t offset, bool atomic, bool copy, bool mutableCopy)
+if (!atomic) {
+oldValue = *slot;
+*slot = newValue;
+} else {
+spinlock_t& slotlock = PropertyLocks[slot];
+slotlock.lock();
+oldValue = *slot;
+*slot = newValue;  
+ slotlock.unlock();
+}
+}
+
+id objc_getProperty(id self, SEL \_cmd, ptrdiff_t offset, BOOL atomic) {
+if (offset == 0) {
+return object_getClass(self);
+}
+
+    // Retain release world
+    id *slot = (id*) ((char*)self + offset);
+    if (!atomic) return *slot;
+
+    // Atomic retain release world
+    spinlock_t& slotlock = PropertyLocks[slot];
+    slotlock.lock();
+    id value = objc_retain(*slot);
+    slotlock.unlock();
+
+    // for performance, we (safely) issue the autorelease OUTSIDE of the spinlock.
+    return objc_autoreleaseReturnValue(value);
+
+}
+{% endhighlight %}
+
+### iOS 中的读写安全方案 (I/O 操作，文件操作)
+
+读数据不会破坏数据，总结就是”多读单写“。
+
+- 同一时间，只能有一个线程进行写操作
+- 同一时间，允许有多个线程进行读操作
+- 同一时间，不允许有写的操作，又有读的操作
+
+#### 实现方案：
+
+- pthread_rwlock_t 读写锁，等待会进入休眠
+- dispatch_barrier_async 异步栅栏调用
+
+基类
+{% highlight ruby %}
+@interface BaseIOLockTest : NSObject
+
+- (void)fileIOTest;
+- (void)read;
+- (void)write;
+
+@end
+
+@implementation BaseIOLockTest
+
+- (void)fileIOTest {
+  dispatch_queue_t queue = dispatch_get_global_queue(0, 0);
+  for (int i = 0; i < 10; i++) {
+  dispatch_async(queue, ^{
+  [self read];
+  });
+  dispatch_async(queue, ^{
+  [self write];
+  });
+  }
+  }
+
+- (void)read {
+  sleep(1);
+  NSLog(@"%s", **func**);
+  }
+
+- (void)write {
+  sleep(1);
+  NSLog(@"%s", **func**);  
+  }
+
+@end
+{% endhighlight %}
+
+pthread_rwlock_t
+{% highlight ruby %}
+@interface PthreadRWLockTest : BaseIOLockTest
+
+@end
+
+@implementation PthreadRWLockTest {
+pthread_rwlock_t \_lock;
+}
+
+- (instancetype)init {
+  self = [super init];
+  if (!self) {
+  return nil;
+  }
+  pthread_rwlock_init(&\_lock, NULL);
+  return self;
+  }
+
+- (void)read {
+  pthread_rwlock_rdlock(&\_lock);
+  [super read];
+  pthread_rwlock_unlock(&\_lock);
+  }
+
+- (void)write {
+  pthread_rwlock_wrlock(&\_lock);
+  [super write];
+  pthread_rwlock_unlock(&\_lock);
+  }
+
+- (void)dealloc {
+  pthread_rwlock_destroy(&\_lock);
+  }
+
+@end
+{% endhighlight %}
+
+dispatch_barrier_async
+{% highlight ruby %}
+@interface BarrierIOTest : BaseIOLockTest
+
+@end
+
+@implementation BarrierIOTest {
+dispatch_queue_t \_queue;
+}
+
+- (instancetype)init {
+  self = [super init];
+  if (!self) {
+  return nil;
+  }
+  \_queue = dispatch_queue_create("file.barrier.queue", DISPATCH_QUEUE_CONCURRENT);  
+   return self;
+  }
+
+- (void)read {
+  dispatch_async(\_queue, ^{
+  [super read];
+  });
+  }
+
+- (void)write {
+  dispatch_barrier_async(\_queue, ^{
+  [super write];
+  });
+  }
+
+@end
+{% endhighlight %}
+Note：dispatch_barrier_async 这个函数传入的并发队列必须是自己用 queue_create 创建的，如果传入一个串行队列或全局并发队列（global queue）相当于 dispath_async， dispatch_barrier_async => dispath_async。

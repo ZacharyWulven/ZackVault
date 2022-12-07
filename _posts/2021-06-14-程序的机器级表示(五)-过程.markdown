@@ -1,0 +1,83 @@
+---
+layout: post
+title: 程序的机器级表示(五)-过程
+date: 2021-06-14 15:45:30.000000000 +09:00
+categories: [CSApp]
+tags: [CSApp]
+---
+
+过程，是软件中的一个重要抽象。它提供一种封装代码的方式，用一组指定的参数和一个可选的返回值实现了某种功能。然后可以在程序中不同地方调用这个函数。
+
+### 不同的编程语言，过程形式多样。
+
+1. 函数
+2. 方法
+3. 子例程
+4. 处理函数
+
+假设 P 调用 Q，Q 执行后返回到 P。这些动作包括下面一个或多个机制：
+
+1. 传递控制，在进入 Q 的时候，程序计数器必须被设置为 Q 的代码起始地址，然后再返回，要把程序计数器设置为 P 中调用 Q 后那条指令的地址。
+2. 传递数据，P 必须能向 Q 提供一个或多个参数，Q 必须能够向 P 返回一个值。
+3. 分配和释放内存，在开始时，Q 可能需要位局部变量分配空间，而在返回前，又必须释放这些存储空间。
+
+### 运行时栈
+
+C 语言过程调用机制关键特性在于使用了栈数据结构提供的先进后出的内存管理原则。在 P 调用 Q 例子中，当 Q 被执行时，P 以及所有向上追溯到 P 调用链过程都暂时被挂起了。栈和程序寄存器存放着传递控制和数据、分配内存所需的信息。
+
+当 P 调用 Q 时，控制和数据信息被添加到栈尾，当 P 返回时这些信息被释放掉，
+
+{% highlight ruby %}
+x86-64 栈向低地址方向增长，而栈指针 %rsp 指向栈顶元素。通过增加栈指针来释放空间。
+{% endhighlight %}
+
+当 x86-64 过程需要的存储空间超过寄存器大小就会在栈上分配空间，这个部分称为“栈帧 stack frame”
+{% highlight ruby %}
+大多数栈帧都是定长的。通过寄存器过程 P 可以传递最多 6 个整数值（指针或整数）。超过则使用栈帧。
+{% endhighlight %}
+
+### 转移控制
+
+将控制从函数 P 转移到 Q 只需要把程序计数器设置为 Q 的代码起始地址，不过之后从 Q 返回时，处理器必须记录号它需要继续 P 执行的代码位置。
+
+在 x86-64 这个信息用执行 call Q 调用过程来记录的，该指令把地址 A 压入栈中，并将 PC 设置为 Q 的起始地址。压入地址 A 被称为返回地址。是紧跟在 call 指令后面的那条指令地址。 对应 ret 会从栈中弹出地址 A，并把 PC 设置为 A。
+{% highlight ruby %}
+call 指令有个一个目的，即指明被调用过程起始地址的指令地址。同跳转一样，调用可以是直接的或间接的。直接用标号，间接的用 \* 后边跟操作指示符
+{% endhighlight %}
+
+#### 例子，下面两个函数 first 和 last 反汇编代码，以及 main 函数
+
+{% highlight ruby %}
+Disassembly of last(long u, long v)
+u in %rdi, v in %rsi
+0000000000400540 <last>:
+400540: 48 89 f8 mov %rdi,%rax L1: u
+400543: 48 0f af c6 imul %rsi,%rax L2: u \* v
+400547: c3 retq L3: Return
+
+Disassembly of first(long x)
+x in %rdi
+0000000000400548 <first>:
+400548: 48 8d 77 01 lea 0x1(%rdi),%rsi F1: x+1
+40054c: 48 83 ef 01 sub $0x1,%rdi F2: x-1
+400550: e8 eb ff ff ff callq 400540 <last> F3: Call last(x - 1, x + 1)
+400555: f3 c3 repz retq F4: Return
+.
+.
+.
+400560: e8 e3 ff ff ff callq 400548 <first> M1: Call first(10)
+400565: 48 89 c2 mov %rax,%rdx M2: Resume
+
+指令 | 状态值
+标号 PC 指令 %rdi %rsi %rax %rsp \*%rsp 描述
+M1 0x400560 callq 10 - - 0x7fffffffe820 - 调用 fisrt(10)
+F1 0x400548 lea 10 - - 0x7fffffffe818 0x400565 first 入口
+F2 0x40054c sub 10 11 - 0x7fffffffe818 0x400565
+F3 0x400550 callq 9 11 - 0x7fffffffe818 0x400565 调用 last(9,11)
+L1 0x400540 mov 9 11 - 0x7fffffffe810 0x400555 last 入口
+L2 0x400543 imul 9 11 9 0x7fffffffe810 0x400555  
+L3 0x400547 retq 9 11 99 0x7fffffffe810 0x400555 从 last 返回 99
+F4 0x400555 repq repq 9 11 99 0x7fffffffe818 0x400565 从 first 返回 99
+M2 0x400565 mov 9 11 99 0x7fffffffe820 - 继续执行 main
+
+{% endhighlight %}

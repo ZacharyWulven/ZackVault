@@ -1,0 +1,191 @@
+---
+layout: post
+title: Go 语言快速入门-03-网络编程
+date: 2022-06-18 16:45:30.000000000 +09:00
+tag: 区块链
+---
+
+## TCP Server 搭建步骤
+1. 绑定 IP 和端口：IP 确定网络中唯一服务器，端口确定这个 IP 下的唯一进程
+2. 设置侦听：将文件描述符设置为被动，等待客户端连接
+3. 等待客户端连接
+4. 与客户端通信
+
+例子：高并发回射服务器，不管客户端发什么，都回复什么
+
+{% highlight ruby %}
+func main() {
+  1 绑定 IP 和端口，设置侦听
+  // func Listen(network, address string) (Listener, error); address 地址类型的格式
+  // net.Listen("tcp", "127.0.0.1:8080")
+  
+  // 0.0.0.0 本机任意有效 IP 都可作为连接 IP
+  listener, error := net.Listen("tcp", ":8080")
+  if error != nil {
+    // 输出错误直接退出
+    log.Panic("failed to listen", error)
+  }
+  fmt.Println("local addr:", listener.Addr())
+
+  // 4 扫尾工作，清理工作
+  // defer 注册延迟执行，本代码段退出后，执行该调用，即使前边有 crash，defer 代码也能执行，类似 swift
+  defer listener.Close()
+
+  // 2 等待客户端：它是阻塞等待新连接到来, 所以写个 for 循环，支持多个
+  for {
+    conn, error := listener.Accept()
+    if error != nil {
+      fmt.Println("failed to Accept", error)
+      continue
+    }
+    // 3 与客户端通信
+    // read 也会阻塞读, 所以开启 goroutine
+    go handle_conn(conn)
+  }
+
+}
+
+func handle_conn(conn net.Conn) {
+  defer conn.Close()
+  fmt.Println("remoter addr", conn.RemoteAddr().String())
+
+  // 循环通信
+  buffer := make([]byte, 256)
+  for {
+    n, error := conn.Read(buffer)
+    if error != nil {
+      fmt.Println("failed to read", error)
+      break
+    }
+    fmt.Printf("read %d bytes, msg(%s)\n", n, string(buffer))
+
+    // 写回给网络
+    // 这里会有问题，如果先发多个字节，再发少个字节，会多发送给客户端，所以需要用切片 buffer[:n]
+    //  conn.Write(buffer)
+
+    // 收多少 发多少，buffer[:n]
+    conn.Write(buffer[:n])
+
+  }
+}
+{% endhighlight %}
+
+测试
+1. 运行 Server 通过 go run *.go 或 GoLand 等 IDE
+2. 客户端使用命令 $nc 127.0.0.1 8080（nc 是 netcat 测试工具）
+* server 后台打印 remoter addr 127.0.0.1:54982 说明客户端连接了
+3. 然后用 $netstat -anp tcp | grep 8080 查看，建立了一对连接，两个进程
+* tcp4       0      0  127.0.0.1.8080         127.0.0.1.54982        ESTABLISHED
+* tcp4       0      0  127.0.0.1.54982        127.0.0.1.8080         ESTABLISHED
+
+
+
+## TCP 客户端开发步骤
+1 请求连接
+2 与服务器通信，通信 模仿 nc 命令，nc 命令做了什么？接收标准输入，发送给服务器；接收服务器内容，打印到屏幕
+{% highlight ruby %}
+func main() {
+  // 1. 连接到服务器
+  // func Dial(network, address string) (Conn, error) {
+  // conn 就是负责通信的
+  conn, err := net.Dial("tcp", ":8080")
+  if err != nil {
+    log.Panic("failed to Dial", err)
+  }
+  defer conn.Close()
+
+  // 2. 通信 模仿 nc 命令：
+  buffer := make([]byte, 256)
+  for {
+    // 读标准输入--发送网络
+    n, error := os.Stdin.Read(buffer) // 阻塞读
+    if err != nil {
+      log.Panic("failed to os.Stdin.Read", err)
+    }
+    if n > 0 {
+      conn.Write(buffer[:n])
+    }
+    // 读网络--打印屏幕
+    n, error1 := conn.Read(buffer)
+    if error != nil {
+      log.Panic("failed to read from network", error1)
+    }
+    os.Stdout.Write(buffer[:n])
+  }
+
+}
+{% endhighlight %}
+
+
+## HTTP 服务器搭建
+HTTP 协议：浏览器与服务器之间数据交换格式基础
+
+HTTP 服务器搭建步骤
+1. 设置路由规则: 浏览器做出 A 请求，使用 A 服务进行回应，浏览器做出 B 请求，使用 B 服务进行回应
+* 请求要对应到路由规则，即什么请求用什么服务回应
+* 查看 go 中文网 package 里的 net 包 API，http://docscn.studygolang.com/pkg/net/http/
+2. 启动 HTTP 服务器
+
+{% highlight ruby %}
+func HelloServer(w http.ResponseWriter, req *http.Request) {
+  w.Write([]byte("hello world\n"))
+}
+
+func ByeServer(w http.ResponseWriter, req *http.Request) {
+  w.Write([]byte("bye bye\n"))
+}
+
+func main() {
+  // 1 设置路由规则
+  // 匿名函数：ResponseWriter 写对象； Request 请求
+
+  // 设置路由规则, handler 就是服务函数
+  // func HandleFunc(pattern string, handler func(ResponseWriter, *Request)) {
+  // pattern 规则
+  // go 帮助我们封装了协议的内容，让开发者只关心要做的事（类似 GCD）
+  http.HandleFunc("/hello", HelloServer)
+  http.HandleFunc("/bye", ByeServer)
+
+  // 启动 http 服务
+  log.Fatal(http.ListenAndServe(":9090", nil))
+}
+
+{% endhighlight %}
+
+测试：
+* 启动服务后通过，$netstat -an\|grep 9090 查看监听情况
+* 使用命令行 $curl http://localhost:9090/hello 或浏览器打开 http://localhost:9090/bye
+
+
+## 查看 http 请求内容
+{% highlight ruby %}
+func handle_conn(conn net.Conn) {
+  buffer := make([]byte, 2048)
+  for {
+    n, error := conn.Read(buffer)
+    if error != nil {
+      fmt.Println("failed to ", error)
+      break
+    }
+    os.Stdout.Write(buffer[:n])
+  }
+}
+
+func main() {
+
+  lister, error := net.Listen("tcp", ":9090")
+  if error != nil {
+    log.Panic("failed to ", error)
+  }
+  for {
+    conn, error := lister.Accept()
+    if error != nil {
+      fmt.Println("failed to ", error)
+      continue
+    }
+    go handle_conn(conn)
+  }
+
+}
+{% endhighlight %}
+

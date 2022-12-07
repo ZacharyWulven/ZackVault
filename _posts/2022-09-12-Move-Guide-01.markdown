@@ -1,0 +1,178 @@
+---
+layout: post
+title: Move-Guide-01
+date: 2022-09-12 16:45:30.000000000 +09:00
+tag: web3
+---
+
+## 0x01 start
+{% highlight ruby %}
+1 下载 starcoin-macos-latest.zip，MacOS 将其拷贝至 /usr/local/bin 目录即可
+https://github.com/starcoinorg/starcoin/releases
+
+2 starcoin 节点命令
+$ starcoin -n dev 启动一个本地节点
+$ starcoin -d [path_to_your_data_folder] -n dev console 启动一个本地节点同时打开控制台
+
+3 starcoin 控制台命令
+3.1 指定账户获得测试代币
+starcoin% dev get-coin 0x936a24b36fbf80103fa788bef0cae73b -v 100STC
+3.2 账户列表
+starcoin% account list
+3.3 单一账户情况查看
+starcoin% account show 0xb7c46353c6c0e3a2559d5b12cad981e4
+3.4 创建新账户
+starcoin% account create -p [pwd]
+
+
+4 创建项目
+Move 的包管理工具为 Move Package Manager(mpm),它类似于 Rust的 Cargo 或者 Node 的 NPM。
+$ mpm package new [项目名称]
+经典目录结构:
+项目名称_dir
+|---Move.toml
+|---sources
+    |---项目名称.move
+    
+sources 用来存档 Move 的模块,它类似于 Java 中的类文件。
+Move.toml 用来存放配置文件：包括包的原数据、依赖和命名地址。
+上述文件”项目名称_dir“构成一个 Move 包(Move Package)
+
+    
+5 vsCode 打开项目，在插件里下载 Move 插件，代码即可高亮
+
+6
+module MyCounterAddr::MyCounter { }
+MyCounterAddr 是 module 名称，它的地址被定义在 Move.toml 配置文件中相关地址上
+如：
+[addresses]
+StarcoinFramework = "0x1"
+MyCounterAddr = "0x20"
+
+在 Move 中每个 module 都必须与地址关联
+{% endhighlight %}
+
+## 0x02 MyCounter 源码分析
+{% highlight ruby %}
+module MyCounterAddr::MyCounter {
+     use StarcoinFramework::Signer;
+     /*
+     定义结构体 Counter
+     使用struct定义了一个叫做Counter的结构体，同时被 key,store两种限制符修饰，
+      Move 的类型系统灵活，每种类型都可以被四种限制符所修饰。
+      这四种限制符我们称之为 abilities，它们定义了类型的值是否可以被复制、丢弃和存储。
+      这四种 abilities 限制符分别是: Copy, Drop, Store 和 Key.
+      它们的功能分别是：
+       Copy - 被修饰的值可以被复制。
+      Drop - 被修饰的值在作用域结束时可以被丢弃。
+      Key - 被修饰的值可以作为键值对全局状态进行访问。
+      Store - 被修饰的值可以被存储到全局状态。
+     */
+     struct Counter has key, store {
+        value:u64,
+     }
+
+     // 方法可以在任何模块中被调用，或被 script 调用
+     public fun init(account: &signer){
+        // 把资源绑定到账户上
+        move_to(account, Counter{value:0});
+     }
+     // 关键字 acquires，放在函数返回值之后，用来显式定义此函数获取的所有 Resource。
+     public fun incr(account: &signer) acquires Counter {
+        let counter = borrow_global_mut<Counter>(Signer::address_of(account));
+        counter.value = counter.value + 1;
+     }
+      /*
+      public(script) fun：script function 是模块中的入口方法，
+      表示该方法可以通过控制台发起一个交易来调用，就像本地执行脚本一样
+      Self则是代表自身 module。
+      */
+     public(script) fun init_counter(account: signer){
+        Self::init(&account)
+     }
+
+     public(script) fun incr_counter(account: signer)  acquires Counter {
+        Self::incr(&account)
+     }
+}
+  
+{% endhighlight %}
+
+
+## 0x03 部署
+{% highlight ruby %}
+1 
+Move.toml 中配置 MyCounterAddr = "0x936a24b36fbf80103fa788bef0cae73b"，
+账户地址选一个就行，可在 starcoin 控制台 通过 account list 查看
+
+2 编译
+$ my-counter mpm release
+输出如下：说明部署成功
+Packaging Modules:
+         0x936a24b36fbf80103fa788bef0cae73b::MyCounter
+Release done: release/my_counter.v0.0.1.blob, package hash: 0x4220d6af48ae5a7c58777dd979c63f74f2f7cf9682bda3f398b7a4936b6e590a
+
+然后会在 release 文件夹中，看到你编译好的二进制文件 my_counter.v0.0.1.blob
+
+3 部署
+在 Starcoin Console 中执行如下命令即可部署：
+starcoin% dev deploy [path to blob] -s [addr] -b
+-s 即 --sender, -b 即 --blocking，表示阻塞等待命令执行完成
+
+如果遇到账户被锁，用 unlock命令解锁即可。
+starcoin% account unlock [addr] -p [pwd]
+pwd 是账户密码
+输出 "status": "Executed", 说明部署成功
+txn 0x040fa4f40ec3947a75251195fa566a6f64df2ceb5b5239fcc96b894e06f36c87 submitted.
+{
+  "ok": {
+    "dry_run_output": {
+      "events": [],
+      "explained_status": "Executed",
+      "gas_used": "7800",
+      "status": "Executed",
+      }
+  }
+}
+
+**** 特别注意，在 Move 中代码存储在个人的地址上，而非像以太坊那样的公共地址上。
+因此合约部署后并不会创建新地址，当我们想要调用合约时需要采用部署合约人的地址+合约名来调用该合约。
+
+4 调用合约 init_counter 方法
+starcoin% account execute-function --function 0x936a24b36fbf80103fa788bef0cae73b::MyCounter::init_counter -s 0x0000000000000000000000000a550c18 -b
+命令解释
+0x936a24b36fbf80103fa788bef0cae73b::MyCounter::init_counter，合约所在地址+包名+函数名
+-s 即 --sender, -b 即 --blocking，表示阻塞等待命令执行完成
+
+
+5 查看 Counter 资源
+starcoin% state get resource 0x0000000000000000000000000a550c18 0x0000000000000000000000000a550c18::MyCounter::Counter
+
+在 Move 中合约的数据被称为资源(resource)，由于读取数据不改变链上状态，因此不需要 -s -b，不会执行交易，也不消耗状态。
+
+
+6 调用 incr_counter 方法
+starcoin% account execute-function --function 0x936a24b36fbf80103fa788bef0cae73b::MyCounter::incr_counter -s 0x0000000000000000000000000a550c18 -b
+
+7 再次 Counter 资源
+starcoin% state get resource 0x0000000000000000000000000a550c18 0x936a24b36fbf80103fa788bef0cae73b::MyCounter::Counter
+输出：value 已经变化了
+{
+  "ok": {
+    "json": {
+      "value": 2
+    },
+    "raw": "0x0200000000000000"
+  }
+}
+
+{% endhighlight %}
+
+
+## 0x04 参考
+
+{% highlight ruby %}
+https://mp.weixin.qq.com/s/4ucdWPhOuJagRGi6GiLcyg
+https://github.com/WeLightProject/Web3-dApp-Camp/tree/main/move-dapp
+https://starcoinorg.github.io/starcoin-cookbook/docs/getting-started/setup/
+{% endhighlight %}

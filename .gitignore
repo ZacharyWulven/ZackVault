@@ -12,6 +12,9 @@
 # bundler cache
 _site
 vendor
+.sass-cache
+.jekyll-metadata
+.container/
 
 # rubygem
 *.gem
@@ -19,3 +22,4 @@ vendor
 # npm dependencies
 node_modules
 package-lock.json
+

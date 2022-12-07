@@ -1,0 +1,813 @@
+---
+layout: post
+title: JavaScript-05-函数
+date: 2022-09-23 16:45:30.000000000 +09:00
+tag: javascript
+---
+
+# 函数
+
+* 函数定义的形参类似于函数体内定义的局部变量
+* 函数除了实参，还有一个调用上下文，就是 this 关键字的值
+* JavaScript 中函数也是一个对象
+* 支持嵌套
+
+
+## 0x01 定义函数
+### 1 函数声明
+* Note Note Note：函数声明语句会被“提升”到包含脚本、函数或代码块的顶部。因此调用代码可以出现在声明之前
+* Note：如果函数没有 return 表达式，则返回 undefined
+* 函数声明实际会声明一个变量，然后把函数对象赋值给它
+{% highlight ruby %}
+function add(a, b) {
+    return a + b;
+}
+
+// 返回 undefined
+function log() {
+    console.log("log sth")
+}
+{% endhighlight %}
+
+### 2 函数表达式
+* 函数表达式的函数名是可选的
+* 函数表达式不会声明变量，至于要把新定义的函数赋值给常量还是变量这取决于你，最佳实践是给 const，以免被 override
+* Note：函数表达式不会像函数声明那样被声明“提升”，即在函数表达式赋值前无法引用或调用它们
+{% highlight ruby %}
+const square = function(x) {
+    return x * x;
+}
+
+const f = function fact(x) {
+    if (x <= 1) {
+        return 1;
+    } else {
+        return x * fact(x) - 1;
+    }
+}
+
+// 函数表达式用作函数参数
+[3, 2, 1].sort(function(a, b) { return a - b; });
+
+// 函数表达式也可以定义立即调用
+let tensquared = (function(x) { return x * x ;}(10));
+{% endhighlight %}
+
+### 3 箭头函数
+* 使用箭头分隔参数和函数体
+* 不能在箭头函数参数和箭头之间写换行符
+{% highlight ruby %}
+const sum = (x, y) => { return x + y };
+
+// 如果只有一个 return 语句，则可以省略 return、语句末尾的分号以及花括号
+const sum2 = (x, y) => x + y;
+
+// 箭头函数只有一个参数，则可以省略参数列表的括号
+const polynomial = x => x * x + 2 * x + 3;
+
+// Note: 没有参数的箭头函数必须写 ()
+const func = () => 42;
+{% endhighlight %}
+
+如果箭头函数的函数体是一个 return 语句，但要返回对象字面量，那必须把这个对象字面量放在一对圆括号中，避免解释器分不清花括号是函数体的还是对象字面量的
+{% highlight ruby %}
+const f = x => { return {value: x}; }; // 语法正确
+const g = x => ({value: x});       // 语法正确
+const h = x => {value: x};       // 歧义错误： 什么也不返还,作为对象字面量可能被误解为标签语句
+const i = x => {v:x, w:x};     // 语法错误：编译失败
+console.log(h()); // undefined
+{% endhighlight %}
+
+* 箭头语法非常适合作为值传给函数，比如使用 map、filter、reduce 时非常常见
+{% highlight ruby %}
+let filtered = [1, null, 2, 3].filter(x => x !=== null);
+let squares = [1,2,3,4].map(x => x * x);
+{% endhighlight %}
+
+Note：箭头函数没有 prototype 属性，即也不能作为新类的构造函数
+Note：特性：箭头函数从定义自己的环境继承 this 的值，而不像其他方式定义的函数那样定义自己的调用上下文
+
+### 4 嵌套函数
+{% highlight ruby %}
+    function hypotenuse(a,b) {
+        function square(x) { return x * x; }
+        return Math.sqrt(square(a) + square(b));
+    }
+{% endhighlight %}
+
+## 0x02 函数调用
+JavaScript 函数可以通过 5 种方式调用
+1. 作为函数
+2. 作为方法
+3. 作为构造函数
+4. 通过 call() 或 apply() 方法间接调用
+5. 通过 JavaScript 语言特性隐式调用（与常规函数调用不同）
+
+### 1 函数调用
+* Note：ES2020 中，可以 f?.x() 调用函数，这样调用等价于 (f !== null && f !=== undefined) ? f(x) : undefined
+* 对于非严格模式下函数调用，调用上下文（this 值）是全局对象，但在严格模式下，调用上下文的值是 undefined
+* Note：箭头函数它们总是继承自身定义所在环境的 this 值
+{% highlight ruby %}
+使用 this 判断是不是严格模式
+    const strict = (function(){ return !this; }());
+    console.log(strict); 
+{% endhighlight %}
+
+### 2 方法调用
+* 对象上方法调用时，调用上下文就是这个对象，也就是 this 的值
+{% highlight ruby %}
+
+    // 假如 o 对象有个 m 方法，则有两种方式调用
+    o["m"](x, y); // 方式一
+    o.m(x,y);     // 方式二
+{% endhighlight %}
+
+#### 方法调用链
+如果你写的方法没有返回值，可以考虑返回 this。
+{% highlight ruby %}
+    let a = new Square().x(100).y(100).size(50).fill("red").draw();
+{% endhighlight %}
+
+Note：this 是关键字，不具有变量那样的作用域
+
+#### Note：this
+* 除了箭头函数，嵌套函数不会继承包含函数的 this 值。
+* Note：如果嵌套函数被当做方法调用，那它的 this 值就是调用它的对象。
+* Note：如果嵌套函数（不是箭头函数）被当做函数调用，它的 this 值要么是全局对象（非严格模式下），要么是 undefined（严格模式）
+
+{% highlight ruby %}
+本例 case 1 演示了 this 的问题，case 2 和 case 3 是解决方案
+    let o = {
+        // m 被当做方法调用，so this === 对象
+        m: function() {
+            console.log("m begin call")
+
+            let self = this; // Note 重要：在 case 1 的 f 中可以引用 self 来引用对象 o
+            console.log(this === o); // true
+
+            // case 1
+            // f(); // f 被当做函数调用，so this 是全局对象或 undefined
+            // function f() {
+            //     console.log("m.f begin call")
+            //     console.log(this === o); // false, this 是全局对象或 undefined
+            //     console.log(self === o); // true
+            // }
+
+            // case 2
+            // const f = () => {
+            //     console.log("m.f -> begin call")
+            //     console.log(this === o); // true，可使用 this，因为箭头函数继承 this
+            // }
+            // f();
+
+            // case 3
+            const f = (function() {
+               console.log("m.f with bind begin call")
+               console.log(this === o); // true, 使用 bind 定义一个在指定对象上被隐式调用的新函数
+            }).bind(this);  // 绑定到外部 this
+            f();
+
+        }
+    };
+
+    o["m"]();
+}
+{% endhighlight %}
+
+### 3 构造函数调用
+* 函数或方法前加关键字 new 就是构造函数调用
+* 如果构造函数没有参数，构造时可省略括号
+{% highlight ruby %}
+let o = new Object; 等价于 o = new Object();
+{% endhighlight %}
+
+* 构造函数创建新对象，这个对象继承构造函数的 prototype 属性指定的对象
+* 在构造函数中可以使用 this 引用这个新对象，即 this === 新对象
+* Note：构造函数没有 return，是隐式返回新对象，如果你显示写了 return 就按写的 return 返回，但如果写了 return 而没有返回值或返回一个原始值，
+则这个返回值会被忽略，还是走隐式返回新对象的值 
+
+### 4 间接调用
+* JavaScript 函数是对象，有两个方法 call() 和 apply()，用来间接调用函数，这俩方法允许我们指定调用时的 this 值，也可以理解为改变 this 指向
+* call 使用自己的参数列表作为函数的参数
+* apply 则期待数组值作为参数
+
+### 5 隐式函数调用
+下列情况会触发隐式调用
+1. 如果对象有 getter 或 setter，则查询或设置其属性时可能会调用这些方法
+2. 当对象在字符串上下文使用时（比如拼接对象与字符串）会调用对象的 toString() 方法。类似当对象用于数值上下文时，会调用它的 valueOf() 方法
+3. 在遍历可迭代对象的元素时，也会涉及一系列方法调用
+4. 标签模板字面量是一种伪装的函数调用
+5. 代理对象的行为完全由函数控制，这些对象上几乎任何操作都会导致一个函数被调用
+
+## 0x03 函数实参与形参
+* JavaScript 函数定义不指定形参类型，函数调用也不会对实参进行类型检查，甚至连实参个数都不检查
+
+### 1 可选形参与默认值
+* Note：函数调用时传入实参少于形参时，额外形参会获得默认值，通常是 undefined
+* Note：在设置有可选参数的函数时，一定要把可选参数放在参数列表最后，这样才可以省略
+* ES6 后可以在形参列表中设置形参默认值，
+{% highlight ruby %}
+    function getPropertyNames(o, a) {
+        if (a === undefined) {
+            a = [];
+        }
+        // 或不使用 if ，写 a = a || []; 也是等价的
+        for(let property in o) {
+            a.push(property);
+        }
+        return a;
+    }
+
+    let o = {x: 1}, p = {y: 2, z: 3};
+    let a = getPropertyNames(o);
+    console.log(a);      // [ 'x' ]
+    console.log(getPropertyNames(p, a)); // [ 'x', 'y', 'z' ]
+
+    // Note：ES6 及以后可以在形参列表中设置形参默认值，语法是：形参=默认值
+    // a = [] 每次都创建并传入一个新的空数组
+    function getPropertyNames2(o, a = []) {
+
+        for(let property in o) {
+            a.push(property);
+        }
+        return a;
+    }
+
+    // 参数默认值为变量并在箭头函数中的使用
+    const rectangle = (width, height = width * 2) => ({ width, height});
+    console.log(rectangle(1)); // { width: 1, height: 2 }
+{% endhighlight %}
+
+### 2 剩余形参与可变长度实参列表
+* 剩余形参函数也叫可变长度函数
+* 定义传入比形参多的实参函数，类似 C 语言的可变参数
+* 剩余形参前有 3 个点，而且必须是函数声明中最后一个参数
+* 调用有剩余形参的函数时，传入的实参首先会赋值到非剩余形参，然后所有剩余实参会保存在一个数组中赋值给剩余形参
+* Note 重要：在函数体内，剩余形参的值始终是数组。数组有可能为空，但永远不可能是 undefined
+* Note 重要：永远不要给剩余形参定义默认值，这样即没有用也不合法
+* Note：剩余形参和扩展操作符虽然都是 "..."，但他们有区别，后者可以在函数调用中使用
+{% highlight ruby %}
+// 剩余形参
+    function max(first=-Infinity, ...rest) {
+        let maxValue = first;
+        for(let n of rest) {
+            if (n > maxValue) maxValue = n;
+        }
+        return maxValue;
+    }
+    let a = max(1, 10, 100, 2, 3, 1000, 4, 5, 6);
+    console.log(a); // 1000
+{% endhighlight %}
+
+### 3 Arguments 对象
+* Arguments 是一个类数组对象
+* Note：Arguments 效率低，应该避免使用它，用上边讲的剩余参数替代
+* 在严格模式下，arguments 会被当成保留字，因此不能用这个名字来声明局部变量或函数形参
+{% highlight ruby %}
+// ES6 之前通过 Arguments 获取多个实参
+    function max2(x) {
+        let maxV = -Infinity;
+        for(let i = 0; i < arguments.length; i++) {
+            if (arguments[i] > maxV) maxV = arguments[i];
+        }
+        return maxV;
+    }
+    a = max2(1, 10, 100, 2, 3, 1000, 4, 5, 6);
+    console.log(a); // 1000
+{% endhighlight %}
+
+### 4 在函数调用中使用扩展操作符
+* 在期待单个值的上下文中，扩展操作符 ... 用于展开或扩展数组（或任何可迭代的对象，如字符串）的元素
+{% highlight ruby %}
+    let numbers = [5, 2, 10, -1, 9, 100, 1];
+    let b = Math.min(...numbers);
+    console.log(b);   // -1
+    
+    // 剩余形参与扩展操作符的结合
+    function timed(f) {
+        return function(...args) {
+            console.log(`Entering function ${f.name}`);
+            let startTime = Date.now();
+            try {
+                return f(...args);
+            } finally {
+                console.log(`Exiting ${f.name} after ${Date.now() - startTime}ms`);
+            }
+        };
+    }    
+    function benchmark(n) {
+        let sum = 0;
+        for(let i = 1; i <= n; i++) {
+            sum += i;
+        }
+        return sum;
+    }
+    b = timed(benchmark)(100); // 5050
+    console.log(b);
+{% endhighlight %}
+
+### 5 把函数实参解构为形参
+{% highlight ruby %}
+    /*
+        如果我们定义一个函数，它的形参包含在方括号中，那说明这个函数期待对每对方括号都传入一个数组值
+        
+    */
+    function vectorAdd(v1, v2) {
+        return [v1[0]+ v2[0], v1[1] + v2[1]];
+    }
+    // 这样更直观一些
+    function vectorAdd2([x1, y1], [x2, y2]) {
+        return [x1 + x2, y1 + y2];
+    }
+    let a = vectorAdd([1,2], [3,4]);
+    console.log(a); // [ 4, 6 ]
+
+    // 类似的，把传入的对象解构赋值给形参
+    function vectorMultiply({x, y}, scalar) {
+        return { x: x * scalar, y: y * scalar };
+    }
+    a = vectorMultiply({x: 1, y: 2}, 2);
+    console.log(a); // { x: 2, y: 4 }
+
+    // 属性名始终在冒号左边，形参名则在冒号右边
+    // 解构赋值中也可以为形参定义默认值
+    function vectorMultiply2({x, y, z = 0}, scalar) {
+        return { x: x * scalar, y: y * scalar, z: z * scalar };
+    }
+    a = vectorMultiply2({x: 1, y: 2}, 2);
+    console.log(a);  // { x: 2, y: 4, z: 0 }
+
+    // 通过把对象参数解构为函数参数来模拟可选多个参数
+    function arraycopy({from, to=from, n=from.length, fromIndex=0, toIndex=0}) {
+        let valuesToCopy = from.slice(fromIndex, fromIndex + n);
+        to.splice(toIndex, 0, ...valuesToCopy);
+        return to;
+    }
+    a = [1,2,3,4,5];
+    let b = [9,8,7,6,5];
+    let c = arraycopy({from: a, n: 3, to: b, toIndex: 4});
+    console.log(c); // [9, 8, 7, 6, 1, 2, 3, 5]
+
+
+    // 解构数组时，可以为被展开数组中的额外元素定义一个剩余参数
+    /*
+        数组前两个元素会展开赋值给 x 和 y，剩下元素保存在 coords 中
+        第一个数组之后的参数保存在 rest 中
+    */
+    function f([x, y, ...coords], ...rest) {
+        return [x + y, ...rest, ...coords]; // Note 这里是扩展操作符
+    }
+    f([1, 2, 3, 4], 5, 6) // => [3, 5, 6, 3, 4]
+    
+        /*
+        解构对象时也可使用剩余形参，剩余形参的值是一个对象包含所有未被解构的属性
+    */
+    function vectorMultiply3({x, y, z=0, ...props}, scalar) {
+        return {x: x * scalar, y: y * scalar, z: z * scalar, ...props};
+    }
+    c = vectorMultiply3({x: 1, y: 2, w: -1}, 2); 
+    console.log(c);  // { x: 2, y: 4, z: 0, w: -1 }
+    
+    
+    // 除了解构作为参数的对象和数组，也可以解构对象的数组、有数组属性的对象，已经有对象属性的对象，无论层级多深
+    function drawCircle({x, y, radius, color: [r, g, b]}) {
+        
+    }
+{% endhighlight %}
+
+
+### 6 参数类型
+* JavaScript 方法参数没有定义类型，传参时也没有类型检查
+
+## 0x04 函数作为值
+* JavaScript 中函数不仅是语法也是值，so 可以把函数赋值给变量、保存为对象的属性、或数组元素、作为参数传给其他函数
+{% highlight ruby %}
+    let o = {square: function(x) { return x * x; }};
+    let y = o.square(4);
+    console.log(y); // 16
+
+    let a = [x => x * x, 20];
+    let b = a[0](a[1]);
+    console.log(b); // 400
+    
+    
+    function add(x, y) { return x + y }
+    function sub(x, y) { return x - y }
+    function multiply(x, y) { return x * y }
+    function divide(x, y) { return x / y }
+    
+    function operate(operator, operator1, operator2) {
+        return operator(operator1, operator2);
+    }
+
+    let i = operate(add, operate(add, 2, 3), operate(multiply, 4, 5))
+    console.log(i); // (2+3) + (4*5) = 25
+
+或这样更清晰些
+    const operators = {
+        add: (x,y) => x+y,
+        sub: (x,y) => x-y,
+        multiply: (x,y) => x*y,
+        divide: (x,y) => x/y,
+        pow: Math.pow,
+    }
+
+    function operate2(operator, operator1, operator2) {
+        if (typeof operators[operator] === "function") {
+            return operators[operator](operator1, operator2);
+        } else {
+            throw "unknow operator"
+        }
+    }
+
+    let j = operate2("add", "hello", operate2("add", " ", "world")); // hello world
+    console.log(j);              // hello world
+    j = operate2("pow", 10, 2);
+    console.log(j);              // 100
+    
+{% endhighlight %}
+
+### 1 定义自己的函数属性
+* Note：函数在 JavaScript 中并不是原始值，是一种特殊的对象，这就意味着函数可以有属性
+{% highlight ruby %}
+    //定义自己的函数属性
+    /*
+        初始化函数对象计数器 counter 属性
+        函数声明会被提升，因此我们可以在函数声明之前就赋值
+    */
+    uniqueInt.counter = 0;
+
+    function uniqueInt() {
+        return uniqueInt.counter++;
+    }
+    console.log(uniqueInt()); // 0
+    console.log(uniqueInt()); // 1
+
+    // 使用自身属性来缓存值
+    function factorial(n) {
+        if(Number.isInteger(n) && n > 0) {
+            if (!(n in factorial)) {
+                factorial[n] = n * factorial(n - 1);
+            }
+            return factorial[n];
+        } else {
+            return NaN;
+        }
+    }
+    factorial[1] = 1 // 初始化缓存，保存最基础的值
+    console.log(factorial(5)); // 120
+{% endhighlight %}
+
+## 0x05 函数作为命名空间
+* 在函数体内声明的变量在函数外部不可见，有时可以把函数用做临时的命名空间，这样可以保证在其中定义的变量不会污染全局命名空间，
+或改为“立即执行函数”
+{% highlight ruby %}
+    (function() {
+        console.log("立即执行函数");
+    }());
+{% endhighlight %}
+
+## 0x06 闭包
+* 严格来讲，所有 JavaScript 函数都是闭包
+* 闭包的本质：它们会捕获自身定义所在外部函数的局部变量（以及参数）绑定
+{% highlight ruby %}
+    // 使用闭包改进 uniqueInt
+    let uniqueInt = (function() {
+        let counter = 0;
+        return function() { return counter++; };
+    }());
+    console.log(uniqueInt()); // 0
+    console.log(uniqueInt()); // 1
+    
+    
+    // 类似 counter 这样的私有变量并非只能由一个闭包独享
+    console.log("------非独享-----------");
+    function counter() {
+        let n = 0;
+        return {
+            count: function() { return n++; },
+            reset: () => n = 0,
+        };
+    }
+    let c = counter(), d = counter(); // 创建两个独立的计数器，相互不影响
+    console.log(c.count()); // 0
+    console.log(d.count()); // 0
+    console.log(c.count()); // 1
+    console.log(c.reset()); // 0
+    console.log(c.count()); // 0
+    console.log(c.count()); // 1
+    console.log(c.count()); // 2
+
+{% endhighlight %}
+
+将闭包与属性获取方法和设置方法组合使用
+{% highlight ruby %}
+    function counter(n) { // 使用参数 n 作为私有变量
+        return {
+            get count() { return n++; },
+            set count(m) {
+                if (m > n) n = m;
+                else throw Error("count can only be set to a larger value");
+            }
+        };
+    }
+
+    let c = counter(1000);
+    console.log(c.count); // 1000
+    console.log(c.count); // 1001
+    console.log(c.count); // 1002
+    console.log(c.count); // 1003
+{% endhighlight %}
+实现通用共享私有状态函数
+{% highlight ruby %}
+    function addPrivateProperty(o, name, predicate) {
+        let value; // 操作的值并没有保存在对象上
+        o[`get${name}`] = function() { return value; };
+
+        o[`set${name}`] = function(v) {
+            if (predicate && !predicate(v)) {
+                throw new TypeError(`set${name}: invalid value ${v}`);
+            } else {
+                value = v;
+            }
+
+        }
+
+    }
+    let o = {};
+    addPrivateProperty(o, "Name", x => typeof x === "string");
+
+    o.setName("Frank");    
+    console.log(o.getName()); // Frank
+    o.setName(0);     // TypeError
+
+{% endhighlight %}
+
+前边例子都是相同作用域中定义两个闭包，共享访问相同的私有变量，但要注意闭包会意外共享不该被共享的变量
+{% highlight ruby %}
+    function constfunc(v) { return () => v; };
+    let funcs = [];
+    for(var i = 0; i < 10; i++) {
+        funcs[i] = constfunc(i);
+    }
+    console.log(funcs[5]()); // 5
+
+    function constfunc2() {
+        let funcs = [];
+        for(var i = 0; i < 10; i++) {
+            funcs[i] = () => i;
+        }
+        return funcs;
+    }
+    let funcs2 = constfunc2();
+    console.log(funcs2[5]()); // 10 与预期不符
+因为通过 var 声明变量在整个函数作用域内有效
+解决方案是将 var 换成 let，let 是块作用域，每次循环都会定义一个与其他循环不同的独立作用域，每个作用域都有自己独立的 i 绑定
+{% endhighlight %}
+
+## 0x07 函数属性、方法与构造方法
+
+### 1 length 属性
+* 函数有一个只读的 length 属性，表示函数的元数，即函数在参数列表中声明的形参个数
+* 剩余形参不算在 length 属性中
+
+### 2 name 属性
+* 只读属性 name，表示函数定义时使用的名字
+* 如果是为命名的函数表示第一次创建时赋值给变量或属性名
+
+### 3 prototype 属性
+* 除了箭头函数，所有函数都有一个 prototype 属性，这个属性引用一个被称为原型的对象
+* 每个函数都有自己的原型
+* 当函数作为构造函数时，新创建的对象从这个原型对象继承属性
+
+### 4 call() 和 apply() 方法
+* 这里方法允许间接调用
+* 它们的第一个参数是在其上调用这个函数的对象，即函数的调用上下文，在函数体内它会变成 this 的值。
+* 后续参数都传给被调用的函数
+* call 语法 f.call(o, 1, 2)
+* apply 语法 f.apply(o, [1, 2])
+{% highlight ruby %}
+    // 将对象 o 的 m 方法替换成另一个版本
+    // 新版本在调用原始方法前、后会打印日志
+    function trace(o, m) {
+        let original = o[m];    // 记住原始方法
+        o[m] = function(...args) {  // 定义新方法
+            console.log(new Date(), "Entering:", m);
+            let result = original.apply(this, args); // 调用原始方法
+            console.log(new Date(), "Exiting:", m);
+            return result;   // 返回结果
+        }
+    }
+    
+// 利用 call 实现继承的例子
+    function Person(name, age) {
+        this.name = name;
+        this.age = age;
+    }
+    function Student(name, age, grade) {
+        Person.call(this, name, age);  // 通过 call 实现
+        this.grade = grade;
+    }
+
+    let s = new Student("tom", 12, 3);
+    console.log(s);
+{% endhighlight %}
+
+### 5 bind() 方法
+* 将函数绑定到对象上
+* 如果在函数 f 上调用 bind 并传入对象 o 则这个方法会返回一个新函数。如果作为函数来调用这个新函数，就会像 f 是 o 的方法一样调用原始函数，传给新函数的所有参数都会传给原始函数
+* Note：箭头函数从定义它们的环境继承 this，且这个 this 不能被 bind 覆盖，因此如果前面 foo 是箭头函数，则 bind 不会起作用
+* bind 返回函数的 name 属性由单词 “bound” 和调用 bind 的函数 name 属性构成
+{% highlight ruby %}
+    function foo(y) { // 这个函数需要绑定
+        return this.x + y;
+    }
+    let o = {x: 1};
+    let g = foo.bind(o); // 调用 g(x) 会在 o 上调用 f()
+    console.log(g(2));   // 3
+    let p = {x: 10, g};
+    console.log(p.g(2)); // 3 => 仍然绑定到 o 而不是 p
+
+// 使用 bind 进行“部分应用”
+    let sum = (x, y) => x + y;
+    let succ = sum.bind(null, 1); // 把第一个参数 x 绑定为 1
+    console.log(succ(2)); // 3 => x 为 1, 2 会传给 y
+
+    function fb(y, z) {
+        return this.x + y + z;
+    }
+    let m = fb.bind({x: 1}, 2); // 绑定 this 和 y
+    console.log(m(3)); // 6 
+    console.log(m.toString()); // function () { [native code] }
+
+{% endhighlight %}
+
+### 6 toString() 方法
+* console.log(m.toString()); // function () { [native code] }
+
+### 7 Function() 构造函数
+* 最后一个字符串参数是函数体
+* 循环中创建对象可能会影响性能
+{% highlight ruby %}
+    const f = new Function("x", "y", "return x*y;");
+    console.log(f); // [Function: anonymous]
+{% endhighlight %}
+
+## 0x08 函数式编程
+
+### 1 使用函数处理数组
+{% highlight ruby %}
+    let data = [1,1,3,5,5];
+    const sum = (x,y) => x + y;
+    const square = x => x * x;
+    let mean = data.reduce(sum) / data.length;
+    console.log(mean);  // 3
+    let deviations = data.map(x => x - mean);
+    let stddev = Math.sqrt(deviations.map(square).reduce(sum) / (data.length - 1));
+    console.log(stddev); // 2
+{% endhighlight %}
+
+### 2 高阶函数
+* 高阶函数就是操作函数的函数，它接收一个或多个函数作为参数并返回一个新函数
+{% highlight ruby %}
+    const even = x => x % 2 === 0;
+    const odd = not(even);  // not 就是一个高阶函数
+    console.log([1,1,3,5,5].every(odd)); // true 数组所有元素都是奇数
+
+case 2
+    function mapper(f) {
+        return a => a.map(f);  // 返回一个函数
+    }
+    const increment = x => x + 1;
+    const incrementAll = mapper(increment);
+    let a = incrementAll([1,2,3]);
+    console.log("a is ", a); //  [ 2, 3, 4 ]
+
+case 3
+    // 返回一个计算 f(g(...)) 新函数
+    // 返回的函数 h 会把接收的所有参数传给 g
+    // 再把 g 返回值传给 f，然后返回 f 的返回值
+    // f 和 g 被调用时都使用与 h 被调用时相同的 this 值
+    function compose(f, g) {
+        return function(...args) {
+            return f.call(this, g.apply(this, args));
+        };
+    }
+
+    const sum = (x,y) => x + y;
+    const square = x => x * x;
+    a = compose(square, sum)(2, 3); //
+    console.log(a); // 25
+
+{% endhighlight %}
+
+### 3 函数的部分应用
+* 函数 f 的 bind 方法返回一个新函数，传给 bind 的参数会放在传给原始函数的参数列表的开头，但有时放右侧部分
+{% highlight ruby %}
+    // 传给这个函数参数会传到左侧
+    function partialLeft(f, ...outerArgs) {
+        return function(...innerArgs) {
+            let args = [...outerArgs, ...innerArgs]; // 构建参数列表
+            return f.apply(this, args);   // 调用 f
+        };
+    }
+
+    // 传给这个函数参数会传到右侧
+    function partialRight(f, ...outerArgs) {
+        return function(...innerArgs) {
+            let args = [...innerArgs, ...outerArgs]; // 构建参数列表
+            return f.apply(this, args);   // 调用 f
+        };
+    }
+
+    function partial(f, ...outerArgs) {
+        return function(...innerArgs) {
+            let args = [...outerArgs];
+            let innerIndex = 0;
+            for (let i = 0; i < args.length; i++) {
+                if (args[i] === undefined) {
+                    args[i] = innerArgs[innerIndex++];
+                }
+            }
+        }
+    }
+
+    // 
+    const f = function(x,y,z) {
+        return x * (y - z);
+    }
+    let a = partialLeft(f, 2)(3, 4);
+    console.log(a); // -2 => 2 * (3 - 4)
+    a = partialRight(f, 2)(3, 4);
+    console.log(a); // 6 => 3 * (4 - 2)
+    a = partial(f, undefined, 2)(3, 4);
+    console.log(a); // 6 = > 3 * (2 - 4)
+    
+    const sum = (x,y) => x + y;
+
+    const increments = partialLeft(sum, 1);
+    const cuberoot = partialRight(Math.pow, 1/3);
+    console.log(cuberoot(increments(26))); // 3
+{% endhighlight %}
+* 对 not 的使用
+
+{% highlight ruby %}
+
+    const not = partialLeft(compose, x => !x);
+    const even = x => x % 2 === 0;
+    const odd = not(even);
+    const isNumber = not(isNaN);
+    a = odd(3) && isNumber(2);
+    console.log(a);  // true
+
+{% endhighlight %}
+
+{% highlight ruby %}
+    const product = (x,y) => x * y;
+    const neg = partial(product, -1);
+    const sqrt = partial(Math.pow, undefined, .5);
+    const reciprocal = partial(Math.pow, undefined, neg(1));
+
+    let data = [1,1,3,5,5];
+    let mean = product(reduce(data, sum), reciprocal(data.length));
+    let stddev = sqrt(product(reduce(map(data, compose(square, partial(sum, neg(mean)))), sum),
+    reciprocal(sum(data.length, neg(1)))));
+{% endhighlight %}
+
+### 4 函数记忆
+{% highlight ruby %}
+    function memoize(f) {
+        const cache = new Map();
+        return function(...args) {
+            let key = args.length + args.join("+");
+            if (cache.has(key)) {
+                return cache.get(key);
+            } else {
+                let result = f.apply(this, args);
+                cache.set(key, result);
+                return result;
+            }
+        };
+    }
+
+    function gcd(a, b) {
+        if (a < b) {
+            [a, b] = [b, a];
+        }
+        while (b !== 0) {
+            [a, b] = [b, a % b];
+        }
+        return a;
+    }
+
+    const gcdmemo = memoize(gcd);
+    console.log(gcdmemo(85, 187)); // 17
+
+
+    // Note 在编写需要记忆的递归函数时，
+    // 我们通常希望递归记忆版，而非原版
+    const factorial = memoize(function(n) {
+        return (n <= 1) ? 1 : n * factorial(n - 1);
+    });
+    console.log(factorial(5)); // 120
+{% endhighlight %}

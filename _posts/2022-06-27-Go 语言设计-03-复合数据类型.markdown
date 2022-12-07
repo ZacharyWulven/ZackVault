@@ -1,0 +1,1020 @@
+---
+layout: post
+title: Go 语言设计-03-复合数据类型
+date: 2022-06-27 16:45:30.000000000 +09:00
+tag: 区块链
+---
+
+## 复合数据类型
+* 数组
+* slice
+* map
+* struct 结构体
+
+数组和结构体都是聚合类型，它们的值由内存中一组变量构成。
+
+{% highlight ruby %}
+数组和结构体的长度都是固定的；slice 和 map 都是动态数据结构。
+{% endhighlight %}
+
+## 数组
+固定长度，并且元素为相同类型。由于长度固定，所以在 Go 中很少直接使用。slice 可以增长或缩短。
+{% highlight ruby %}
+  var q [3]int = [3]int{1, 2, 3}
+
+  for i, v := range q {
+    fmt.Printf("i=%d, v=%d\n", i, v)
+  }
+{% endhighlight %}
+
+在数组字面量中，如果省略号"..."出现在数组长度的位置，则数组的长度由初始化数组元素个数决定
+{% highlight ruby %}
+  q1 := [...]int{1, 2, 3, 4, 5}
+  fmt.Printf("%T\n", q1) // [5]int
+{% endhighlight %}
+
+Note 数组长度是数组类型的一部分，所以 [3]int 和 [4]int 是两种不同的数字类型，数组的长度必须是常量表达式，这个表达式在编译时就可以确定。
+{% highlight ruby %}
+  q2 := [3]int{1, 2, 3}
+  q2 = [4]int{1,2,3,4}  // 编译报错
+{% endhighlight %}
+
+下面情况索引可以按照任意顺序出现，有时可省略，没有指定索引默认是零值
+{% highlight ruby %}
+type Currency int
+
+const (
+  RMB Currency = iota
+  EUR
+  GBP
+  USD
+)
+
+symbol := [...]string{RMB: "￥", USD: "$"}
+fmt.Println(symbol) // symbol is [￥   $]
+{% endhighlight %}
+
+定义一个有 100 个元素的数字 r，除最后一个元素值是 -1，其他元素值都是 0。
+{% highlight ruby %}
+  r := [...]int{99: -1}
+  fmt.Println(r)
+{% endhighlight %}
+
+
+如果一个数组的元素类型是可比较的，则数组也是可比较的，这样就可以用 == 比较两个数组，比较结果是两个数组中的值是否相等
+{% highlight ruby %}
+
+  a := [2]int{1, 2}
+  b := [...]int{1, 2}
+  fmt.Println("a == b is", a == b) // true
+  
+  d := [3]int{1, 2}
+  fmt.Println(a == d)  // 编译错误，因为数组类型不同，不能进行比较
+{% endhighlight %}
+
+crypto/sha256 包里的函数 Sum256 用来为存储在任意字节 slice 中的消息使用 SHA256 加密散列算法生成一个摘要。摘要是 256 位，即 [32]byte。
+{% highlight ruby %}
+  c1 := sha256.Sum256([]byte("x"))
+  c2 := sha256.Sum256([]byte("X"))
+  fmt.Printf("%x\n%x\n%t\n%T\n", c1, c2, c1 == c2, c1) 
+  
+  // %x 表示将一个数组或 slice 里的字节按照十六进制方式输出
+  // %t 表示输出一个布尔值
+  // %T 表示输出一个值的类型
+  
+  // Output:
+  2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881
+  4b68ab3847feda7d6c62c1fbcbeebfa35eab7351ed5e78f4ddadea5df64b8015
+  false
+  [32]uint8
+{% endhighlight %}
+
+{% highlight ruby %}
+当调用一个函数时，每个传入的参数都会创建一个副本，然后赋值给对应的函数变量，所以函数接受的是一个副本，而不是原始的参数。
+{% endhighlight %}
+
+
+## Slice
+表示拥有相同类型元素的可变长度的序列。通常写成 []T，其中元素类型都是 T。slice 是一种轻量级的数据结构，可用来访问数组的部分或全部元素，也称为 slice 底层数组。
+
+slice 三个属性
+1. 指针：指向数组的第一个可以从 slice 中访问的元素，这个元素并不一定是数字第一个元素
+2. 长度：指 slice 中的元素个数，不能超过 slice 的容量
+3. 容量大小：通常是从 slice 的起始元素到底层数组的最后一个元素间的元素个数
+
+Go 内置函数 len 和 cap 返回 slice 长度和容量
+
+
+一般来讲数组索引从 0 开始，但月份是从 1 开始的，因此不设置 index = 0 的值，默认是空字符串。
+
+
+slice 操作符 s[i:j] (0<=i<=j<=cap(s))，创建一个新 slice，新的 slice 引用了序列 s 中从 i 到 j -1 索引位置的所有元素，
+这里的 s 既可以是数组或指向数组的指针也可以是 slice。新元素个数 j - i 个。新 slice 结束索引是 len(s) - 1。
+
+* 如果 slice 的引用超过了被引用对象的容量，即 cap(s) 那么会导致程序宕机
+* 如果 slice 的引用超过了被引用对象的长度，即 len(s) 那么最终 slice 会比原来 slice 长 
+
+{% highlight ruby %}
+  months := [...]string{1: "January", 2: "February", 3: "March", 4: "April", 5: "May",
+    6: "June", 7: "July", 8: "August", 9: "September", 10: "October", 11: "November", 12: "December"}
+  fmt.Println(months)
+
+// 数组结构
+index  0    1                                                                            12     
+     ["" January February March April May June July August September October November December]
+
+
+  Q2 := months[4:7]        // len = j - i = 3，cap = 9 (13 - 4)
+  summer := months[6:9]    // len = j - i = 3，cap = len(months) - i = 7
+
+  fmt.Println("Q2 is", Q2)         // Q2 is [April May June]
+  fmt.Println("summer is", summer) // summer is [June July August]
+    
+  for _, s := range summer {
+    for _, q := range Q2 {
+      if s == q {
+        fmt.Printf("%s appears in bother\n", s)
+      }
+    }
+  }
+  
+  fmt.Println(summer[:20])  // 宕机，因为超出了 cap
+  fmt.Println(summer[:5]) //  正常，只是超出了 len，[June July August September October]
+{% endhighlight %}
+
+另外
+* 求字符串的子串操作和对字节 slice([]byte) 做 slice 操作这俩者是相似的，都写在 x[m:n]，并且都返回原生的子序列，同时它们的底层引用方式相同。
+* 两个操作都消耗常量时间
+* 区别在于如果 x 是字符串则返回字符串，x 是字节 slice 返回字节 slice，因为 slice 包含了指向数组元素的指针。
+* 将一个 slice 传递给函数时候，可以在函数内部修改底层数组的元素。
+* 创建 slice 就等于是给数组创建了一个别名
+
+### 就地反转例子
+{% highlight ruby %}
+  a := [...]int{1, 2, 3, 4, 5}
+  fmt.Println("a is", a)    // a is [1 2 3 4 5]
+
+  reverse(a[:])             // a reversed is [5 4 3 2 1]
+  fmt.Println("a reversed is", a)
+  
+  
+func reverse(s []int) {
+  for i, j := 0, len(s)-1; i < j; i, j = i+1, j-1 {
+    s[i], s[j] = s[j], s[i]
+  }
+}
+{% endhighlight %}
+
+### 将一个 slice 左移 n 个元素的简单做法连续调用 reverse 三次
+
+{% highlight ruby %}
+// 左移 2 个元素，
+  s := [...]int{1, 2, 3, 4, 5}  // slice 字面量
+  reverse(s[:2])
+  reverse(s[2:])
+  reverse(s[:])
+  fmt.Println("s reversed 3 times is", s) // [3 4 5 1 2]
+{% endhighlight %}
+
+### Slice VS Array
+相同点
+* 都可以通过索引来指定元素，例如上例的 months
+
+
+不同点
+1. slice 
+* 没有固定长度
+* 是指向数组的指针
+* 不能用 == 做比较，bytes.Equal 可用来比较两个字节 slice，其他的 slice 需要自己写
+
+2. array
+* 有固定长度
+* 可以做比较
+
+
+slice 自己实现比较
+{% highlight ruby %}
+func euqalForSlice(x, y []int) bool {
+  if len(x) != len(y) {
+    return false
+  }
+  for i := range x {
+    if x[i] != y[i] {
+      return false
+    }
+  }
+  return true
+}
+  m := [...]int{1, 2, 3, 4, 5}
+  n := [...]int{1, 2, 3, 4, 5}
+  fmt.Println(euqalForSlice(m[:], n[:]))
+
+{% endhighlight %}
+
+### Slice 不能用 == 比较的原因
+1. slice 的元素时非直接的，有可能包含自己本身，没有很高效的处理方法
+2. 如果数组底层元素改变，那么同一个 slice 在不同时间会有不同的元素
+* == 操作符比较的是引用的相等性，即它们是否指向相同的元素。
+* 如果 == 对数组和 slice 行为不一致，会带来问题，所以干脆不能比较 slice
+
+
+{% highlight ruby %}
+散列表 Go 中的 map 只对键值做浅拷贝，这就要求散列表里的键值必须在散列表生命周期内保持不变。
+{% endhighlight %}
+
+### Slice 可以和 nil 比较
+* slice 的零值是 nil，值为 nil 的 slice 没有底层数组，值为 nil 的 slice len 和 cap 都是 0
+* 但也有非空 slice len 和 cap 也都是 0
+{% highlight ruby %}
+  var t []int       // len = 0，t == nil
+  t = nil           // len = 0，t == nil
+  t = []int(nil)    // len = 0，t == nil
+  t = []int{}       // len = 0，t != nil
+{% endhighlight %}
+
+* 所以判断一个 slice 是否为空，应该判断 len(t) == 0
+* 除非文档明确说明，否则无论值是否为 nil， Go 函数都应该以相同方式对待所有长度为零的 slice
+
+
+### make 内置函数
+make 可以创建一个指向元素类型、长度、容量的 slice.
+
+{% highlight ruby %}
+  j := make([]int, 3)       // make([]T, len)，len == cap
+  k := make([]int, 3, 5)    // make([]T, len, cap)，引用了数组前 len 个元素，但 cap 是数组长度
+  l := make([]int, 5)[:3]   // make([]T, cap)[:len]
+{% endhighlight %}
+其实 make 创建一个无名数组并返回它的 slice。这个数组仅可以通过 slice 来访问。
+
+### Slice 的 append 函数
+内置的 append 将元素追加到最后
+{% highlight ruby %}
+  var runes []rune
+  for _, r := range "hello, world" {
+    runes = append(runes, r)
+  }
+  fmt.Printf("runes = %q ", runes) // runes = ['h' 'e' 'l' 'l' 'o' ',' ' ' 'w' 'o' 'r' 'l' 'd'] 
+  
+  // 或者这样构造 []rune("hello, world")
+  fmt.Printf("runes = %q \n", []rune("hello, world"))
+
+{% endhighlight %}
+
+
+appendInt
+
+{% highlight ruby %}
+x 与 z 有相同的底层数组
+func appendInt(x []int, y int) []int {
+  var z []int
+  zlen := len(x) + 1
+  if zlen <= cap(x) {
+    // slice 还有增长空间，扩展内容
+    z = x[:zlen]
+  } else {
+    // slice 没有额外空间了，为它分配一个新的底层数组
+    zcap := zlen
+    newCap := len(x) << 1
+    if zcap <= newCap {
+      zcap = newCap
+    }
+    z = make([]int, zlen, zcap)
+    copy(z, x) //内置 copy 函数
+  }
+  z[len(x)] = y
+  return z
+}
+
+  var x, y []int
+  for i := 0; i < 10; i++ {
+    y = appendInt(x, i)
+    fmt.Printf("i=%d cap=%d\t%v\n", i, cap(y), y)
+    x = y
+  }
+  
+  //打印结果
+  i=0 cap=1       [0]
+  i=1 cap=2       [0 1]
+  i=2 cap=4       [0 1 2]
+  i=3 cap=4       [0 1 2 3]
+  i=4 cap=8       [0 1 2 3 4]
+  i=5 cap=8       [0 1 2 3 4 5]
+{% endhighlight %}
+
+内置的 copy 函数
+* 用来为两个相同类型元素的 slice 复制元素，第一个参数时目标 slice，第二参数时源 slice，可想成 des=src
+* 返回值是实际复制的元素个数，一般返回两个 slice 长度较小值
+
+{% highlight ruby %}
+Note：
+内置的 append 函数使用了比上例 appendInt 更复杂的增长策略，通常我们并不清楚一次 append 会不会导致一次新的内存分配，
+所以我们不能假设原始 slice 和调用 append 后的 slice 指向相同的底层数组，也无法证明它们是指向不同的底层数组
+
+所以通常我们将 append 调用结果再次赋值给源 slice，不仅在调用 append 时需要这样赋值，
+对于任何函数，只有有可能改变 slice 的长度或容量，或指向不同的底层数组，都需要更新 slice 变量。
+即 runes = appendInt(runes, i)
+
+为了正确使用 slice 比较记住，虽然底层数组元素时间接引用的，但是 slice 的指针、长度、容量不是。
+需要更新一个 slice 指针、长度、容量必须使用上述的显示赋值
+
+Note 底层：从这个角度看 slice 并不是纯引用类型，而是类似结构体聚合类型
+type IntSlice struce {
+  ptr *int
+  len, cap int
+}
+
+{% endhighlight %}
+
+append 可以添加多个元素
+{% highlight ruby %}
+  var x1 []int
+  x1 = append(x1, 1, 2, 3)
+  fmt.Println(x1)
+
+  x1 = append(x1, x1...) // x1... 将 x1 转换为参数列表；达到追加 x1 中所有元素目的
+{% endhighlight %}
+
+可以简单修改 appendInt 来匹配 append 添加多个元素的功能
+{% highlight ruby %}
+参数声明中 ...int 表示函数可以接受可变长参数列表
+func appendInt(x []int, y ...int) []int {
+  var z []int
+  zlen := len(x) + len(y)
+  if zlen <= cap(x) {
+    // slice 还有增长空间，扩展内容
+    z = x[:zlen]
+  } else {
+    // slice 没有额外空间了，为它分配一个新的底层数组
+    zcap := zlen
+    newCap := len(x) << 1
+    if zcap <= newCap {
+      zcap = newCap
+    }
+    z = make([]int, zlen, zcap)
+    copy(z, x) //内置 copy 函数
+  }
+  //  z[len(x)] = y
+  copy(z[len(x):], y)
+  return z
+}
+
+  yy := make([]int, 0)
+  fmt.Println(yy)
+
+  yy = appendInt(yy, 0, 1, 2)
+  fmt.Println(yy)
+
+{% endhighlight %}
+
+
+### slice 就地修改
+nonempty 输入的 slice 和 输出的 slice 有相同的底层数组
+{% highlight ruby %}
+func nonempty(strings []string) []string {
+  i := 0
+  for _, s := range strings {
+    if s != "" {
+      strings[i] = s
+      i++
+    }
+  }
+  return strings[:i]
+}
+
+  data := []string{"one", "", "threee"}
+  
+  fmt.Printf("%q\n", nonempty(data)) // ["one" "threee"] 实际是 data[:i]
+  fmt.Printf("%q\n", data)  // ["one" "threee" "threee"]
+{% endhighlight %}
+
+用 append 实现 nonempty
+{% highlight ruby %}
+func nonempty2(strings []string) []string {
+  out := strings[:0] // 引用原始 slice 的新的零长度 slice， out is []
+
+  fmt.Println("out is", out)
+  for _, s := range strings {
+    if s != "" {
+      out = append(out, s)
+    }
+  }
+  return out
+}
+{% endhighlight %}
+
+#### slice 可以实现栈
+{% highlight ruby %}
+func sliceStack() {
+  stack := make([]int, 0)
+  stack = append(stack, 1)
+  top := stack[len(stack)-1] // 栈顶
+
+  stack = stack[:len(stack)-1] // pop
+
+  fmt.Println("stack is", stack) // stack is []
+  fmt.Println("top is", top)     // top is 1
+  
+  s := []int{1, 2, 3, 4, 5}
+  fmt.Println(removeMiddle(s, 2))
+}
+
+func removeMiddle(slice []int, i int) []int {
+  copy(slice[i:], slice[i+1:])
+  return slice[:len(slice)-1]
+}
+{% endhighlight %}
+
+
+## Map
+* 它是一个拥有键值对元素的无序集合
+{% highlight ruby %}
+Note
+键的值是唯一的，通过键来获取、更新、移除值，无论 map 大小，这些操作基本上是通过常量时间的键比较就可以完成
+
+map 只对键值做浅拷贝，这就要求散列表里的键值必须在散列表生命周期内保持不变。
+{% endhighlight %}
+
+* map 是散列表的引用，类型是 map[K]V，K 和 V 是字段的键和值对应的数据类型
+* map 中所有的键都有相同的数据类型，值也有相同的数据类型
+* Note Note Note：键的类型 K 必须可以通过操作符 == 进行比较的数据类型，底层是通过 == 比较检测某一个键是否存在
+* 虽然浮点数也可以进行比较，但最好不要用浮点数作为 key，因为 NaN 可以是浮点类型
+* V 的类型没有限制
+
+
+{% highlight ruby %}
+  // 使用 make 创建 map
+  ages := make(map[string]int)
+
+  // 使用字面量创建 map
+
+  ages1 := map[string]int{
+    "tom": 31,
+    "bob": 49,
+  }
+  fmt.Println(ages)
+  fmt.Println(ages1)
+
+  ages2 := map[string]int{} // 空 map
+  
+  delete(ages1, "tom") // 内置 delete 函数删除一个元素，即使 key 不存在也是安全的
+
+{% endhighlight %}
+
+map 通过 key 查找元素，如果对于元素不存在就返回值类型的零值
+{% highlight ruby %}
+  ages := make(map[string]int)
+
+  // 即使 ages 里没有 key = "tom" 下边两个也是合法的因为，没有 key 的值默认是 零值
+  ages["tom"] += 1    
+  ages["tom"]++
+  fmt.Printf("ages %v", ages)
+
+但 map 元素不是一个变量，所以不能取它的地址，
+不能取地址的原因是 map 的增长可能导致已有元素被新的散列表存储，这样地址就无效了
+_ = &ages["tom"]  // 编译报错
+{% endhighlight %}
+
+map 的 for 
+{% highlight ruby %}
+  for k, v := range ages {
+    fmt.Printf("key=%s v=%d\n", k, v)
+  }
+{% endhighlight %}
+
+map 中元素的迭代顺序是不固定的，不同的实现方法使用不同的散列算法，得到不同的元素顺序。我们认为这种顺序是随机的。
+如果需要按照顺序遍历 map 中的元素，我们需要显示的根据键进行排序
+
+{% highlight ruby %}
+  var names []string
+  for name := range ages {
+    names = append(names, name)
+  }
+  sort.Strings(names)     // 用 sort 包对 key 进行排序
+  for _, name := range names {
+    fmt.Printf("key=%s, val=%d\n", name, ages[name])
+  }
+{% endhighlight %}
+
+* map 类型的零值是 nil，即没有引用任何散列表
+
+{% highlight ruby %}
+  var m map[string]int
+  fmt.Println("m is nil", m == nil)
+  fmt.Println(len(m))
+{% endhighlight %}
+
+* Note 大多数 map 操作都可以安全的在 map 的零值 nil 上执行，包括查找元素、删除元素、获取 map 元素个数，但前提是 map 必须初始化
+{% highlight ruby %}
+  var n map[string]int
+  n["bob"] = 1         // 导致宕机，因为 map 没有初始化
+  fmt.Println(n)
+{% endhighlight %}
+
+* Note: 如果你想知道一个 key 是否存在 map，例如返回零值时，是因为 key 不存在还是其值为零值，有以下方式
+{% highlight ruby %}
+  // 第二个参数返回布尔类型指明该 key 是否存在于 map 中，一般声明为 ok
+  // 方式一
+  _, ok := ages["kk"]
+  if !ok {
+    fmt.Println("ages not contain kk")
+  }
+  // 方式二
+  if _, ok := ages["kk"]; !ok {
+    fmt.Println("ages not contain kk")
+  }
+{% endhighlight %}
+
+* 与 slice 一样 map 不可比较，只能与 nil 比较，判断两个 map 是否有相同的键和值需要写一个循环
+{% highlight ruby %}
+func equalMap(x, y map[string]int) bool {
+  if len(x) != len(y) {
+    return false
+  }
+
+  for k, xv := range x {
+    if yv, ok := y[k]; !ok || xv != yv {
+      return false
+    }
+  }
+  return true
+}
+{% endhighlight %}
+
+Go 语言没有提供集合类型，但既然 map 的键都是唯一的，就可以用 map 来实现这个功能。Go 程序员通常认为 map[string]bool 使用 map 描述成字符串集合，
+但并不是所有的 map[string]bool 都是简单的集合，有一些 map 的值会同时包含 true 和 false 的情况。
+
+假如我们需要一个 map 需求是它的 key 是 slice，但 slice 不可比较所以不能作为 map 的 key，如何解决？
+1. 首先定义一个函数 k 将 slice 映射成字符串 (核心思想是生产可比较的类型，因为 map 的 key 的要求是必须可比较的)
+2. 然后创建一个 map ，key 就使用第一步的字符串
+
+{% highlight ruby %}
+var m = make(map[string]int)
+
+func k(list []string) string {
+  return fmt.Sprintf("%q", list)
+}
+
+func add(list []string) {
+  m[k(list)]++
+}
+
+func count(list []string) int {
+  return m[k(list)]
+}
+{% endhighlight %}
+
+map 的值可以是复合类型，比如 map 或 slice
+{% highlight ruby %}
+var graaph = make(map[string]map[string]bool)
+
+func addEdge(from, to string) {
+  edges := graaph[from] 类似是 map[string]bool
+  if edges == nil {
+    edges = make(map[string]bool)
+    graaph[from] = edges
+  }
+  edges[to] = true
+}
+
+func hasEdge(from, to string) bool {
+  return graaph[from][to]
+}
+{% endhighlight %}
+
+
+## 结构体
+结构体成员变量通常一行一个，但相同类型连续的可以写在一行上，就行下例的 Name 和 Address
+{% highlight ruby %}
+type Employee struct {  命名结构体类型
+  ID            int
+  Name, Address string
+  DoB           string
+  Position      string
+  Salary        int
+  ManagerID     int
+}
+
+  var dilbert Employee
+  position := &dilbert.Position // 获取成员的地址
+  *position = "Senior" + *position
+  fmt.Println(*position)
+  fmt.Println(dilbert.Position)
+
+  var e *Employee = &dilbert
+  fmt.Println(e.Position)
+
+{% endhighlight %}
+
+Note
+{% highlight ruby %}
+成员变量的顺序对于结构体同一性很重要。
+如果我们将字符串类型 Position 和 Name、Address 组合在一起或互换  Name 和 Address 的顺序，
+那么我们就定义了不同的结构体类型。
+
+如果一个结构体的成员变量名称是首字母大写的，那么这个变量是可导出的，这是 Go 语言最主要的访问控制机制。
+一个结构体可以包含可导出和不可导出的成员变量。
+{% endhighlight %}
+
+上边的 Employee 叫做命名结构体类型，命名结构体类型 s 不可以包含自己 s ，但可以定义一个自己的指针类型，即 \*s，这样我们就可以创建一些递归的结构比较链表或树。
+{% highlight ruby %}
+type tree struct {
+  value       int
+  left, right *tree
+}
+{% endhighlight %}
+
+没有任何成员变量的结构体称为空结构体，写作 struct{}，一些 Go 程序员用它来替代被当做集合使用的 map 中的布尔值，来强调只有键是有用的，但这种方式不怎么节约内存，所以尽量少用。
+
+### 结构体字面量
+* 第一种格式：需要按照正确的顺序。为每个成员变量指定一个值。但这样需要开发人员记住成员变量的顺序，所以一般用于比较简单的结构体。
+{% highlight ruby %}
+type Point struct {
+  x, y int
+}
+  p := Point{1, 2}
+  fmt.Println("p is", p)
+{% endhighlight %}
+
+* 第二种格式比较常用：通过指定部分或者全部成员变量的名称和值来初始化结构体变量。如果初始化时某个成员变量没有指定，则使用该成员类型的零值，因为指定了成员名称，所以顺序是无所谓的。
+
+两种格式不能混合使用，另外无法使用第一种格式来绕过不可导出变量无法在其他包中使用的规则。
+{% highlight ruby %}
+package p 
+type T struct {a, b int }
+
+package q
+import "p"
+
+var _ = p.T{a: 1, b: 2}  编译错误，无法引用 a、b
+var _ = p.T{1, 2}        编译错误，无法引用 a、b
+{% endhighlight %}
+
+
+#### 值与引用
+出于效率考虑，大型结构体通常都使用结构体指针的方式直接传递给函数或从函数中返回，Go 这种按值调用的语言中，调用函数接收到是实参的一个副本而不是实参的引用。
+
+{% highlight ruby %}
+  pp := &Point{3, 4}  通常结构体通过指针方式使用
+  fmt.Println("pp is", pp)
+等价于
+  pp = new(Point)
+  *pp = Point{1, 2}
+  fmt.Println("pp is", pp)
+{% endhighlight %}
+
+### 结构体比较
+{% highlight ruby %}
+如果结构体的所有成员变量都是可比较的，则这个结构体就是可比较的；使用 == 或 != 比较。== 按照顺序比较两个结构体的成员变量
+
+  p := Point{1, 2}
+  q := Point{1, 2}
+  fmt.Println(p == q)  true
+{% endhighlight %}
+
+
+### 结构体嵌套和匿名成员
+
+* 匿名成员（可理解为继承）
+* Go 允许我们定义不带名称的结构体成员，值需要指定类型即可，这种结构体成员称为匿名成员
+* 这个结构体成员必须是一个命名类型或指向命名类型的指针
+
+{% highlight ruby %}
+type Point struct {
+  X, Y int
+}
+
+type Circle struct {
+  Point                匿名成员，只需指定类型即可
+  Radius int
+}
+
+type Wheel struct {
+  Circle               匿名成员，只需指定类型即可
+  Spokes int
+}
+
+  var w Wheel
+  w.X = 8              Note：只要 X 是大写的，外围就可以访问，即使 Circle 和 Point 都是小写
+  w.Y = 9
+  w.Radius = 5
+  w.Spokes = 20
+
+
+遗憾的是，结构体字面量没有快捷方式初始化这种结构，所以下边无法编译通过
+  w = Wheel{8, 8, 5, 20}  编译错误
+
+结构体字面量必须遵守类型的完全定义，所以通过下边两种方式初始化，两种方式是等价的
+方式一
+  w = Wheel{Circle{Point{8, 8}, 4}, 10}
+
+方式二
+  w = Wheel{
+    Circle: Circle{
+      Point: Point{
+        X: 8,
+        Y: 10,
+      },
+      Radius: 11,
+    },
+    Spokes: 20, // 注意尾部的逗号是必须的
+  }
+    fmt.Printf("%#v\n", w)
+{% endhighlight %}
+
+外围结构体类型获取的不仅仅是匿名成员的内部变量，还有相关方法。（所以很像继承）。
+
+## JSON
+JSON 是一种发送和接收格式化信息标准。类似的有 XML、ASN.1、Google 的 Protocol Buffer。
+Go 通过标准库 encoding/json、encoding/xml、encoding/asn1 对这些格式编码和解码提供了很好的支持。
+JSON 是 JavaScript 值的 Unicode 编码，这些值包括字符串、数字、布尔值、数组、对象。
+JSON 最基本的类型是数字、布尔、字符串。字符串用双引号括起来的 Unicode 代码点的序列，使用反斜杠进行转义，\uhhh 数字转义得到 UTF-16 编码。
+JSON 的数组用来编码 Go 里的数组和 slice
+
+### Marshal
+把 Go 的数据结构转换为 JSON 称为 marshal，通过 json.marshal 实现
+{% highlight ruby %}
+type Movie struct {
+  Title  string
+  Year   int  `json:"released"`
+  Color  bool `json:"color,omitempty"` // 成员标签
+  Actors []string
+}
+
+func main() {
+  var movies = []Movie{
+    {Title: "Casablanca", Year: 1942, Color: false, Actors: []string{"Humphrey Bogart", "Ingrid Bergman"}},
+    {Title: "Cool Hand Luke", Year: 1967, Color: true, Actors: []string{"Paul Newman"}},
+    {Title: "Bullitt", Year: 1968, Color: true, Actors: []string{"Steve McQueen"}},
+  }
+  data, err := json.Marshal(movies)
+  if err != nil {
+    log.Fatalf("JSON marshaling failed: %s", err)
+  }
+  fmt.Printf("%s\n", data)
+}
+
+Output
+[{"Title":"Casablanca","released":1942,"Actors":["Humphrey Bogart","Ingrid Bergman"]},{"Title":"Cool Hand Luke","released":1967,"color":true,"Actors":["Paul Newman"]},{"Title":"Bullitt","released":1968,"color":true,"Actors":["Steve McQueen"]}]
+{% endhighlight %}
+Marshal 生成一个字节 slice，其中包含一个不带有任何多余空白字符的很长的字符串。但这样不利于阅读，下面介绍 MarshalIndent。
+
+### MarshalIndent 可以输出 JSON 整齐格式，便于阅读
+* 第二个参数定义每行输出的前缀字符串
+* 第三个参数定义缩进字符串
+{% highlight ruby %}
+  data, error := json.MarshalIndent(movies, "", "    ")
+
+  if error != nil {
+    log.Fatalf("JSON marshaling failed: %s", error)
+  }
+  fmt.Printf("%s\n", data) // 返回 json 格式化的样子
+{% endhighlight %}
+
+
+{% highlight ruby %}
+Marshal 使用 Go 结构体成员的名称作为 JOSN 对象里面字段的名称（通过反射的方式）。
+
+只有可导出的成员能够转换为 JSON 里的字符，所以需要大写开头。
+
+{% endhighlight %}
+
+### 成员标签（field tag）
+{% highlight ruby %}
+上例中 Year 对应转换为 released，Color 转换为 color，这是通过成员标签（field tag）实现的；
+
+成员标签定义是结构体成员在编译期间关联的一些元信息；
+
+成员标签定义可以是任意字符串，但按照习惯是由一串由空格分开的标签键值对 key:"value" 组成的，因为标签的值使用双引号括起来。
+所以一般都是原生字符串字面量；
+
+键 json 控制 包 encoding/json 的行为，同样其他 encoding/... 包也遵循这个规则
+
+标签值的第一部分指定了 Go 结构体成员对应 JSON 中字段的名字；
+
+Note Tips
+Color 的标签还有一个额外的选项 omitempty，它表示如果这个成员的值是零值或为空，则不输出这个成员到 JSON
+{% endhighlight %}
+
+
+### unmarshal
+将 JSON 字符串解码为 Go 数据结构称为 unmarshal。由 json.Unmarshal 实现
+
+{% highlight ruby %}
+将上例的电影的 JSON 转为 结构体 slice 中，因为只定义了 Title 所以其他字段将被丢弃。
+  var titles []struct{ Title string }
+  if err := json.Unmarshal(data, &titles); err != nil {
+    log.Fatalf("JSON unmarshaling failed: %s", err)
+  }
+  fmt.Println(titles) // [{Casablanca} {Cool Hand Luke} {Bullitt}]
+{% endhighlight %}
+
+{% highlight ruby %}
+在 unmarshal 阶段，JSON 字段的名称关联到 Go 结构体成员的名称是忽略大小的。
+{% endhighlight %}
+
+### GitHub Issue 例子
+{% highlight ruby %}
+// github.go
+package github
+
+import (
+  "encoding/json"
+  "fmt"
+  "net/http"
+  "net/url"
+  "strings"
+  "time"
+)
+
+const IssuesURL = "https://api.github.com/search/issues"
+
+type IssuesSearchResult struct {
+  TotalCount int `json:"total_count"`
+  Items      []*Issue
+}
+
+type Issue struct {
+  Number    int
+  HTMLURL   string `json:"html_url"`
+  Title     string
+  State     string
+  User      *User
+  CreatedAt time.Time `json:"created_at"`
+  Body      string    // Markdown 格式
+}
+
+type User struct {
+  Login   string
+  HTMLURL string `json:"html_url"`
+}
+
+// 函数 SearchIssues 发送 http 请求并将回复解析为 JSON
+// 查询 GitHub 的 issue 跟踪接口
+func SearchIssues(terms []string) (*IssuesSearchResult, error) {
+  q := url.QueryEscape(strings.Join(terms, " "))
+  resp, err := http.Get(IssuesURL + "?q=" + q)
+  if err != nil {
+    return nil, err
+  }
+  if resp.StatusCode != http.StatusOK {
+    resp.Body.Close()
+    return nil, fmt.Errorf("search query failed:%s", resp.Status)
+  }
+
+  // json.Decode 流式解码器，可以依次从字节流里解码出多个 JSON 实体
+  var result IssuesSearchResult
+  if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+    resp.Body.Close()
+    return nil, err
+  }
+  resp.Body.Close()
+  return &result, nil
+}
+
+
+// issue.go
+func main() {
+  testGitHub()
+}
+func testGitHub() {
+
+  result, err := github.SearchIssues(os.Args[1:])
+  if err != nil {
+    log.Fatal(err)
+  }
+
+  fmt.Printf("%d issues:\n", result.TotalCount)
+  for _, item := range result.Items {
+    fmt.Printf("#%-5d %9.9s %.55s\n", item.Number, item.User.Login, item.Title)
+  }
+
+}
+
+$ go build json.go  编译
+$ ./json repo:golang/go is:open json decoder 查找 open 状态的 bug
+
+GitHub 的 Web 服务器接 口https://developer.github.com/v3/ 还有很多功能
+{% endhighlight %}
+
+## 文本和 HTML 模板
+上边是最简单格式化的例子，但有时情况比较复杂，要求格式和代码彻底分离，可以通过 text/template 包和 html/template 包里的方法来实现。
+这个两包提供一种机制，可以将程序变量的值代入到文本或者 HTML 模板当中。
+
+模板是一个字符串或文件，它包含一个或多个两边用双括号包围的单元 {{....}} 这称为操作。每个操作在模板语言里都对应一个表达式，
+提供简单但欠打的功能包括：输出值、选择结构、调用函数、和方法、描述控制逻辑、实例化其他模板等。
+
+通过模板输出结果需要两个步骤
+1. 需要解析模板并转换为内部的表示方法
+2. 在指定的输入上面执行
+
+通常模板在编译期间就固定下来了
+
+查看 GitHub 的 go 栈下 open 的 issue
+{% highlight ruby %}
+在这个操作里，有一个表示当前值的标记，用点号(.)表示；
+点号最开始表示模板里的参数， {.TotalCount} 代表 TotalCount 成员的值，直接输出
+{{range .Items}} 和 {{end}} 操作创建一个循环
+在操作中符号 | 会把前一个操作的结果当做下一个操作的输入（类似管道）
+Age 第二个操作 daysAgo 函数使用 time.Since 将 CreatedAt 转换为已过期的时间
+CreatedAt 的类似是 time.Time
+
+const templ = `{{.TotalCount}} issues:
+{{range .Items}}--------------------------------------
+Number: {{.Number}}
+User: {{.User.Login}}
+Title: {{.Title | printf "%.64s"}}
+Age: {{.CreatedAt | daysAgo}} days
+{{end}}`
+
+func daysAgo(t time.Time) int {
+  return int(time.Since(t).Hours() / 24)
+}
+
+func main() {
+
+  var report = template.Must(template.New("issuelist").
+    Funcs(template.FuncMap{"daysAgo": daysAgo}).
+    Parse(templ))
+
+  result, err := github.SearchIssues(os.Args[1:])
+  if err != nil {
+    log.Fatal(err)
+  }
+  if err := report.Execute(os.Stdout, result); err != nil {
+    log.Fatal(err)
+  }
+
+}
+
+$  ./issuereport repo:golang/go is:open json decoder
+{% endhighlight %}
+
+### html/template 包
+它使用了 text/template 里一样的 API 和表达式语句，并对出现在 HTML、JavaScript、CSS、URL 中的字符串进行自动转义。
+这些功能可以避免生成 HTML 引发的长久以来都会有的安全问题。
+
+{% highlight ruby %}
+func main() {
+  var issueList = template.Must(template.New("issueList").Parse(`
+  <h1>{{.TotalCount}} issues</h1>
+  <table>
+  <tr style='text-align: left'>
+    <th>#</th>
+    <th>State</th>
+    <th>User</th>
+    <th>Title</th>
+  </tr>
+  {{range .Items}}
+  <tr>
+    <td><a href='{{.HTMLURL}}'>{{.Number}}</a></td>
+    <td><{{.State}}</td>
+    <td><a href='{{.User.HTMLURL}}'>{{.User.Login}}</a></td>
+    <td><a href='{{.HTMLURL}}'>{{.Title}}</a></td>
+  </tr>
+  {{end}}
+  </table>
+  `))
+  result, err := github.SearchIssues(os.Args[1:])
+  if err != nil {
+    log.Fatal(err)
+  }
+  if err := issueList.Execute(os.Stdout, result); err != nil {
+    log.Fatal(err)
+  }
+
+}
+
+
+$ go build issuehtml.go                                                   
+$ ./issuehtml repo:golang/go commenter:gopherbot json encoder >issues.html
+$ open issues.html   
+
+$ ./issuehtml repo:golang/go 7872 7767 >issues2.html
+{% endhighlight %}
+
+
+如果我们错误的使用了 text/template 包，那么字符串”&lt“将会被当做小于号"<"，而字符串 ”<link>“ 将变成一个 link 元素，
+这将改变 HTML 文档结构，甚至有可能产生安全问题。
+
+我们可以使用 template.HTML 类型而不是字符串类型避免模板自动转义受信任的 JavaScript、CSS、URL
+{% highlight ruby %}
+func main() {
+  const templ = `<p>A: {{.A}}</p><p>B: {{.B}}</p>`
+  t := template.Must(template.New("escape").Parse(templ))
+  var data struct {
+    A string        // 不受信任的纯文本
+    B template.HTML // 受信任的 HTML
+  }
+  data.A = "<b>Hello!</b>"
+  data.B = "<b>Hello!</b>"
+  if err := t.Execute(os.Stdout, data); err != nil {
+    log.Fatal(err)
+  }
+}
+{% endhighlight %}
+
+### 查看文档
+* $ go doc text/template
+* $ go doc html/template
+
+

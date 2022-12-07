@@ -1,0 +1,143 @@
+---
+layout: post
+title: 设计模式之工厂方法(对象创建)
+date: 2021-02-10 00:14:30.00000000 +09:00
+categories: [iOS, 设计模式]
+tags: [iOS, 设计模式]
+---
+
+### 何为抽象工厂
+
+抽象工厂提供一个创建一系列相关或相互依赖对象的接口。而无需指定它们的具体类、不必知道其具体类创建细节。甚至产品并不知道谁将负责创建它们。
+
+### 抽象工厂与工厂区别
+
+{% highlight ruby %}
+抽象工厂 工厂方法
+通过组合创建抽象产品 通过类继承创建抽象产品
+创建多系列产品 创建一种产品
+必须修改父类接口才能支持新的产品 子类化创建者并重载工厂方法
+调用一个抽象类 调用多个子类
+{% endhighlight %}
+
+### Cocoa Touch 中抽象工厂 NSNumber
+
+NSNumber 中的类工厂方法定义了决定实例化何种私有具体子类的行为。基础框架中抽象工厂此类特点称为 “类簇” （Class Cluster）。
+
+类簇（Class Cluster）是基于抽象工厂的思想。是抽象工厂的一种形式。将若干相关的私有具体工厂子类集合到一个公有的抽象超类下。
+
+NSNumber 自然的成为这些数子类型的超类型。NSNumber 本身是一个高度抽象的工厂，而 NSCFBoolean 和 NSCFNumber 是具体工厂子类。
+其他类簇 NSData、NSArray、NSDictionary、NSString。
+
+### 代码
+
+{% highlight ruby %}
+@interface BrandingFactory : NSObject
+{
+
+}
+
+- (BrandingFactory \*) factory;
+
+* (UIView \*) brandedView;
+* (UIButton \*) brandedMainButton;
+* (UIToolbar \*) brandedToolbar;
+
+@end
+
+@implementation BrandingFactory
+
+- (BrandingFactory \*) factory
+  {
+  #if defined (USE_ACME)
+  return [[[AcmeBrandingFactory alloc] init] autorelease];
+  #elif defined (USE_SIERRA)
+  return [[[SierraBrandingFactory alloc] init] autorelease];
+  #else
+  return nil;
+  #endif
+  }
+
+* (UIView \*) brandedView
+  {
+  return nil;
+  }
+
+* (UIButton \*) brandedMainButton
+  {
+  return nil;
+  }
+
+* (UIToolbar \*) brandedToolbar
+  {
+  return nil;
+  }
+
+@end
+
+@interface AcmeBrandingFactory : BrandingFactory
+{
+
+}
+
+- (UIView \*) brandedView;
+- (UIButton \*) brandedMainButton;
+- (UIToolbar \*) brandedToolbar;
+
+@end
+
+@implementation AcmeBrandingFactory
+
+- (UIView \*) brandedView
+  {
+  // returns a custom view for Acme
+  return [[[AcmeView alloc] init] autorelease];
+  }
+
+- (UIButton \*) brandedMainButton
+  {
+  // returns a custom main button for Acme
+  return [[[AcmeMainButton alloc] init] autorelease];
+  }
+
+- (UIToolbar \*) brandedToolbar
+  {
+  // returns a custom toolbar for Acme
+  return [[[AcmeToolbar alloc] init] autorelease];
+  }
+
+@end
+
+@interface SierraBrandingFactory : BrandingFactory
+{
+
+}
+
+- (UIView\*) brandedView;
+- (UIButton\*) brandedMainButton;
+- (UIToolbar\*) brandedToolbar;
+
+@end
+
+@implementation SierraBrandingFactory
+
+- (UIView\*) brandedView
+  {
+  // returns a custom view for Sierra
+  return [[[SierraView alloc] init] autorelease];
+  }
+
+- (UIButton\*) brandedMainButton
+  {
+  // returns a custom main button for Sierra
+  return [[[SierraMainButton alloc] init] autorelease];
+  }
+
+- (UIToolbar\*) brandedToolbar
+  {
+  // returns a custom toolbar for Sierra
+  return [[[SierraToolbar alloc] init] autorelease];
+  }
+
+@end
+{% endhighlight %}

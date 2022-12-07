@@ -1,0 +1,312 @@
+---
+layout: post
+title: ETH-01-以太坊概述
+date: 2022-08-05 16:45:30.000000000 +09:00
+tag: 区块链
+---
+
+## 0x01 概述
+以太坊是对比特币的改进，区块链 2.0
+
+### 以太坊的改进
+* 共识协议：以太坊设计了基于 ghost 协议的共识机制
+* memory hard mining puzzle：对内存要求比较高，ASIC resistance（对抗矿机）
+* PoW->PoS
+* smart contract：智能合约，去中心化合约（decentralized contract），如果合作的参与方在不同司法管辖范围，那么通过去中心化合约约束是比较便捷的，
+就算在同一司法管辖区人力去约束也是成本很大的，智能合约好处是一旦部署就不能改了，约束合作方必须按照合同的来
+
+{% highlight ruby %}
+比特币最小单位为“1 satoshi”，一聪
+以太币最小单位为“1 wei”
+{% endhighlight %}
+
+## 0x02 账户
+* 比特币采用 UTXO 模型，一笔交易如果有零钱还有考虑零钱，零钱可以用钱包每次生成一个地址，达到高安全性
+
+* 以太坊是基于账户的模型（account-based Ledger），有点类似咱们使用的银行，它有余额的概念，交易时不用说明币的来源，而是看账户里的钱是否够
+* 以太坊这种基于账户的模式，天然的防双花，因为它只不过是从账户里扣钱，即使你愿意双花也是扣的你账户里的钱
+* 账户余额是全节点需要维护，保存在状态树里的，即所有账户状态组成的树，其中有个字段叫 balance 就是账户余额
+
+### 重放攻击（replay attack）
+账户模式有个问题就是重放攻击，重放和双花是一对。比如 A 向 B 转 10 ETH，假如 B 是有恶意的，一段时间后 B 再次发起。
+* 双花即花钱的人不诚实
+* 重放即收取的人不诚实
+
+* 重放在比特币系统不可能发生，重放在比特币系统中也是双花
+{% highlight ruby %}
+以太坊解决重放方式是加 nonce，交易内容 + nonce 然后签名，nonce 从 0 开始，每一笔交易 nonce + 1
+如果重放，系统发现这个 nonce 已经执行过了，就会忽略
+nonce其实叫 sequence number 更好
+{% endhighlight %}
+
+![](/assets/images/eth/replay.png)
+
+### 以太坊中有两类账户
+1. 外部账户 externally owned account：也称普通账户，即公私钥控制的
+* 包含 balance
+* 包含 nonce（其实叫 sequence number 更好）
+2. smart contract account：合约账户，不通过公私钥对控制
+* Note 合约账户不能主动发起交易
+* 只能由外部账户发起交易；如果外部账户发消息调用合约，这个合约又调用另一个合约这是可以的
+* 包含 balance
+* 包含 nonce：一个合约可以调用另一个合约，同样需要记录调用的次数
+* 还有 code（代码）
+* storage（存储）
+* 为什么以太坊要重新设计账户系统？因为执行合约需要稳定的身份
+
+
+为什么不使用比特币的基于交易的账户模型？比特币 UTXO 模型隐私性还好。每次使用不同的账户地址。
+因为以太坊需要运行智能合约，同时考虑了以往的账户模型，而且需要用户有稳定的身份。最后选择了基于账户的模式。
+
+
+
+## 0x03 状态树
+用什么来实现基于账户的系统？
+* 通过 addr->state，即账户地址到账户状态的映射
+* Note：以太坊中用的账户地址是 160 位的（20 字节， 40 个 16 进制的数）
+
+### 以太坊账户系统如何实现
+
+1. 是否可以通过哈希表存储账户状态？
+* 不行，虽然哈希表本身性能很好，但因为每发布一个区块，就需要把哈希表里所有账户组织成 merkle tree，这样代价太大了
+* 比特币每发布一个区块，交易组成 merkle tree 是 immutable 的，不会变的
+* Note：merkle tree 有个很重要的作用，它是放在块头，让节点间达成共识
+
+2. 那直接用 merkle tree 不要哈希表了行吗？
+* merkle tree 没有提供快速更新、查找
+* 如果所有账户都在 merkle tree 中是否需要排序？用排序的 merkle tree 插入代价太大
+* 区块链系统删东西成本是比较大的
+* 各个节点构建的 merkle tree 可能顺序不同
+* 比特币中没有排序 merkle tree，因为是由挖到矿出块的节点决定的，如果没有获得记账权，那么自己组装的交易顺序别人没必要知道
+* 比特币中证明一个交易在一个区块里不需要排序的 merkle tree，但证明一个交易不在区块里需要排序版本的 merkle tree
+
+### Trie
+trie 前缀树的特点
+1. 每个节点的分支数目，取决于 key 值里元素的取值访问；而以太坊地址是 16 进制，所以分叉数目（branching factor）= 16 + 1（结束标示）
+2. trie 的查找效率取决于 key 的长度；以太坊地址都是 40 个 16 进制的数，所以 key 长度是 40 位
+3. 不会出现碰撞
+4. 是排好序
+5. 更新的局部性很好，不需要全遍历
+
+![](/assets/images/eth/trie.png)
+
+
+{% highlight ruby %}
+1 比特币与以太坊地址是不通用的
+2 以太坊地址也是，公钥取 hash，只不过截取了后边的部分，只要后边的部分
+{% endhighlight %}
+ 
+trie 的缺点
+1. 存储开销大，因为有的分支可能就一个节点；
+
+所以就需要压缩
+
+
+### Patricia Trie（tree） 经过了路径压缩的前缀树，即压缩了单个节点
+* 压缩后树高减小了，这样访问内存的次数就减少了，效率大大提高
+
+![](/assets/images/eth/pt.png)
+
+如果插入新的元素可能已经压缩的树又被扩展了，那么什么时候路径压缩效果比较好？
+* So 键值路径比较稀疏的时候，路径压缩效果好
+
+![](/assets/images/eth/trie2.png)
+
+![](/assets/images/eth/pt2.png)
+
+
+以太坊地址是 160 位，访问空间即 2^160，是比较稀疏的，为什么要什么稀疏，是为了防碰撞
+
+
+### MPT
+* merkle tree 区别与 binary tree 是把普通指针换成了哈希指针
+* MPT 与 PT 的区别也是把普通指针换成了哈希指针
+
+所有账户组成 Patricia Trie，然后把普通指针换成哈希指针，然后就能算出根哈希值了，这个哈希值也写在 block header 里
+* 比特币 block header 里只有一个 merkle tree 根哈希值，即交易的根哈希值
+
+以太坊中 block header 有三个根哈希值
+1. 交易树：跟比特币一样的交易树，
+2. 状态树：账户状态组成的树
+3. 收据树：
+
+根哈希值的作用
+1. 防篡改
+2. merkle proof：证明账户余额是多少，全节点把账户所在分支发给轻节点让其验证
+3. 证明某个账户是否存在是可以的，类似 sorted merkle tree，因为 trie 就是有序的
+
+### 以太坊用的是 Modified MPT，对 MPT 进行了修改
+三种 Node
+* Extension Node：如果一个路径存在路径压缩就会出现 Extension Node，比如都以 a7 开头那么 a7 就是 Extension Node
+* Branch Node：本例就是 1、7、f
+* Leaf Node：类似叶子节点
+
+nibble 是 16进制数的意思，一个 nibble 就是一个 16 进制数
+
+![](/assets/images/eth/mmpt.png)
+
+
+### 产生新区块
+
+当每次发布新区块时候，这个状态树中有一些节点的值会发生变化，这些改变不是在原地改的，而是新建一些分支，原来的状态是保留的
+
+![](/assets/images/eth/mmpt2.png)
+
+下例中两个相邻的区块，虽然每个区块有一个状态树，大状态树中大部分节点是共享的
+只有发生改变的节点是新建一个分支
+
+以太坊可以看成一个大的 MPT 包含很多小的 MPT，每个合约账户的存储都是一个小的 MPT
+
+{% highlight ruby %}
+所以全节点维护的不是一个 MPT，每次出块都会新建一个 MPT，只不过 MPT 中大部分节点是共享的，只有少部分发生变化的节点需要新建分支
+{% endhighlight %}
+
+那么为什么要保留之前的状态，不直接在本地改？
+1. 因为当前交易有可能 undo，比如当分叉时候，没有胜出的节点可以 roll back 回滚到之前的状态
+2. 智能合约执行完的状态需要保留
+
+
+### Block Header
+
+![](/assets/images/eth/block_header.png)
+
+* ParentHash 即前一个区块块头的 hash
+* UncleHash 即叔父区块的 hash，UncleHash 可能比 ParentHash 大好多辈分
+* Coinbase 即挖出这个区块的矿工的地址
+* Root 即状态树根 hash
+* TxHash 即交易树根 hash
+* ReceiptHash 即收据树的根 hash
+* Bloom：与 ReceiptHash 相关，高效查询符合某些条件的查询
+* Difficulty：挖矿难度，也会调整
+* GasLimit： 跟 gas 相关，即这个区块里所有交易能消耗 gas 的上限，避免发布一个对资源消耗很大的区块
+* GasUsed：跟 gas 相关，即这个区块内所有交易消耗的 gas fee 的合
+* Time：区块产生的大致时间
+* MixDigest：与挖矿过程相关，根据 Nonce 算出的 hash
+* Nonce：与挖矿过程相关，也是挖矿时猜的那个随机数
+
+### Block 区块结构
+
+![](/assets/images/eth/block.png)
+
+* header：指向 Block Header 的指针
+* uncles：指向叔父区块 Header 的指针，是一个数组
+* transaction：交易列表
+
+### 区块发布信息
+![](/assets/images/eth/info.png)
+
+### 状态树中保存是 key-value 对 
+状态树中保存的是 (Key=address, Value) pairs
+* Value 是经过 RLP（Recursive Length Prefix） 序列化后再存储
+* RLP 特点是简单，只支持一种类型 nested array of bytes 即字节数组
+
+### 交易树 MPT
+* 每发布一个区块时候，所有交易会组织成交易树，类似比特币
+* 是 MPT
+* 可用于提供 
+
+### 收据树 MPT
+* 每个交易执行完后会形成一个收据，记录这个交易的相关信息，交易树与收据树的节点是一一对应的
+* 是 MPT
+* 增加收据树主要是考虑到以太坊的智能合约执行比较复杂，所以增加收据树有利于我们快速查询结果
+
+### 状态树 VS 交易树 VS 收据树
+* 三棵树都是 MPT，MPT 好处是支持键值沿着某个分支查找；
+
+状态树
+* 对于状态树，查找键值是账户地址
+* 状态树是把系统中所有账户都包含进去，不管这些账户是否跟当前区块交易发生关系
+* 状态树中当前发布区块未改变部分是共享的
+
+交易树
+* 查找键值是在这个区块里交易的序号，交易的排列顺序是由发布区块的节点决定的
+* 只把当前区块里的交易组织起来
+* 是独立的不会共享节点
+* 能提供 merkle proof，证明交易是否存在
+
+收据树
+* 查找键值是在这个区块里交易的序号，交易的排列顺序是由发布区块的节点决定的
+* 只把当前区块里的交易组织起来
+* 是独立的不会共享节点
+* 能提供 merkle proof，证明交易的执行结果
+
+## 0x04 Bloom Filter
+以太坊还支持更复杂的查询，比如过去十天符合众筹或发币的事件等，以太坊提供了 Bloom Filter，Bloom Filter 可以查找某个元素是否在一个大的集合里
+
+Bloom Filter 思想：对一个大的集合计算出一个很紧凑的摘要，如一个 128 位的向量 digest
+
+比如有一个包含 a、b、c 的集合，然后把每个元素取 hash 函数，找到向量中对应位置（index），如将 H(a) 存在某个 index = 1，将 index == 1 的值设置为 1，
+所有元素都处理完了后，得到一个向量就是原来集合的摘要，摘要比原来集合要小很多。
+
+如果有一个 d，对 d 取 hash 后映射到的 index 值是 0，说明 d 不在这个集合中
+
+Bloom Filter 有可能出现哈希碰撞，出现 false positive，即有可能出现误报，但不会出现漏报。
+Bloom Filter 有各种变种，有的用的不是一个哈希函数，而是一组哈希函数，一组哈希函数好处是碰撞概率小一些
+
+Note：Bloom Filter 的局限性是不支持删除操作，因为可能多个元素映射的 index 是相同的，即有哈希碰撞
+如果想要 Bloom Filter 支持删除操作，可能 index 的值就不是 0 和 1，而是一个计数器，还要考虑溢出问题，这样复杂很多，就违背了 Bloom Filter 的设计初衷
+
+### Bloom Filter 作用
+* 收据里包含 Bloom Filter
+* 区块块头里有个总的 Bloom Filter，总 Bloom Filter 是这个区块里所有交易的 Bloom Filter 的并集 
+
+所以通过  Bloom Filter 查询过去十天符合某个条件的事件
+1. 先查哪个区块块头里有需要的交易类型，如果块头里的 Bloom Filter 有我们想要的交易类型
+2. 再查那个区块里包含的交易里所对应收据树里的 Bloom Filter
+
+好处是通过 Bloom Filter 能快速过滤掉大量无关的区块
+
+### transaction-driven state machine
+以太坊的运行过程可以看成是一个交易驱动的状态机，transaction-driven state machine
+* 状态即账户的状态
+* 比特币中的状态是 UTXO
+* 而且以太坊和比特币的状态转移必须是确定性的
+
+### 问题
+1. 如果新的转账地址，状态树会加入新的地址
+2. 状态树是否可以像交易树那样设计？
+* 不行，那样有点类似基于交易，不能知道账户的余额
+* 而且，更严重的问题是，如果是一个新账户，需要遍历找到创世纪块没又找到该账户，才知道是一个新账户
+
+### 交易树和收据树的创建过程
+
+![](/assets/images/eth/new_block.png)
+![](/assets/images/eth/new_block1.png)
+![](/assets/images/eth/new_block2.png)
+
+收据结构：每个收据可以包含多个 log，收据的 Bloom Filter 就是根据 logs 产生的
+
+![](/assets/images/eth/new_block3.png)
+
+### 生成 Bloom Filter
+
+* CreateBloom 函数调用 LogsBloom 为每个收据生成 Bloom，然后把它们用 or 操作合并起来，得到整个区块的 Bloom Filter
+* LogsBloom 生成每个收据的 Bloom Filter，参数时是每个收据的 logs 数组，
+1. 两层 for 循环，外层循环对 logs 里每个元素进行处理，先把 log 的地址取 hash 后加到 Bloom Filter 里，
+bloom9 是 Bloom Filter 中用的哈希函数
+2. 内存循环把 log 的 Topic 加入到 Bloom Filter 里，这样就得到了整个收据的 Bloom Filter
+
+* bloom9 这里是把各个元素映射到 digest 的三个位置（而不是上边将的一个位置），即把三个位置都设置为 1
+1. b 是一个 32 字节的哈希值，即 256 位
+2. r 就是最终要返回的 Bloom Filter，先初始化为 0
+3. 取 b 前 6 个字节没两个一组拼接然后 and 上 2047，相当于对 2048 取余，得到 0~2047 范围的数，
+之所以这么做是因为以太坊中 Bloom Filter 的长度是 2048 位
+4. 循环最后一个行，把 1 左移 b 位，然后合并到 Bloom Filter 里
+5. 这样经过三轮循环后，把三个位置设置为 1，并返回
+
+![](/assets/images/eth/new_block4.png)
+
+### 查询 Bloom Filter
+* 通过调用 BloomLookup 实现对感兴趣 topic 的查询
+
+![](/assets/images/eth/check_bloom.png)
+
+1. 先用 bloom9 函数把 topic 变成 Bloom Filter
+2. 然后把它跟 Bbloom 取 and 操作，看结果是否跟 bit factor 相等
+* 因为还可能包含其他 topic 所以要先进行 and 然后再比较
+* 相对于查找这个 topic 在 Bloom Filter 中位置的值是否都是 1
+
+
+{% highlight ruby %}
+Bloom Filter 真的不一定是真的，但假的一定是假的
+{% endhighlight %}

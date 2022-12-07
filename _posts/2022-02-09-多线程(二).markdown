@@ -1,0 +1,635 @@
+---
+layout: post
+title: ### -2022-02-09-多线程(二).markdown
+date: 2022-02-09 11:00:30.000000000 +09:00
+tag: OC 底层原理 多线程
+---
+
+### 多线程访问安全隐患
+比如多个线程同时访问同一对象，同一变量，同一个文件，最常见就是卖票、存/取钱的问题。解决方案是使用线程同步技术(同步，按照预定的先后顺序进行)。
+ 
+#### 常用线程同步技术: 加锁（原理：判断这把锁有没有被锁，如果被锁就等待），造成线程阻塞的效果，一般有两种：
+1. 互斥锁（低级锁）：让线程休眠，唤醒也耗费性能
+2. 自旋锁（高级锁）：忙等，一直占用 CPU 资源, 相当于写了 while(锁还没被放开) {}
+   
+{% highlight ruby %}
+多个线程读取一个值不需要加锁，同时改一个东西要加锁，多个线程要用同一把锁时，需要持有成成员变量。
+{% endhighlight %}
+
+### iOS 锁
+* OSSpinLock   自旋锁，iOS 10 开始过期了，不安全了，会出现优先级反转的问题，官方推荐使用 os_unfair_loc 替代
+* os_unfair_loc
+* pthread_mutex
+* dispatch_semaphore
+* dispatch_queue(DISPATCH_QUEUE_SERIAL)
+* NSLock
+* NSRecursiveLock
+* NSCondition
+* NSConditionLock
+* @synchronized
+* 属性 atomic
+
+
+应用代码 Base 类，每一个锁的基类
+{% highlight ruby %}
+@interface BaseLockTest : NSObject
+@property (nonatomic, assign) int ticket;
+@property (nonatomic, assign) int money;
+
+- (void)moneyOperation;
+- (void)saleTickets;
+- (void)saleTicket;
+- (void)saveMoney;
+- (void)drawMoney;
+- (void)saleTicketsAssembly;
+@end
+
+@implementation BaseLockTest
+
+- (void)saleTicket {
+  NSInteger oldTicket = self.ticket;
+  sleep(.2);
+  oldTicket--;
+  self.ticket = oldTicket;
+  NSLog(@"还剩 %ld 张票 - %@", (long)self.ticket, [NSThread currentThread]);
+}
+
+- (void)saleTickets {
+  self.ticket = 15;
+  dispatch_queue_t queue = dispatch_get_global_queue(0, 0);
+  dispatch_async(queue, ^{
+    for (int i = 0; i < 5; i++) {
+         [self saleTicket];
+    }
+  });
+  dispatch_async(queue, ^{
+    for (int i = 0; i < 5; i++) {
+         [self saleTicket];
+    }
+  });
+  dispatch_async(queue, ^{
+    for (int i = 0; i < 5; i++) {
+         [self saleTicket];
+    }
+  });
+}
+
+- (void)drawMoney {
+  int oldMoney = self.money;
+  sleep(.2);
+  oldMoney -= 20;
+  self.money = oldMoney;
+  NSLog(@"取20，还剩%d元 - %@", self.money, [NSThread currentThread]);
+}
+
+- (void)saveMoney {
+    int oldMoney = self.money;
+    sleep(.2);
+    oldMoney += 50;
+    self.money = oldMoney;
+    NSLog(@"存50，还剩%d元 - %@", oldMoney, [NSThread currentThread]);
+}
+
+- (void)moneyOperation {
+  self.money = 100;
+  dispatch_queue_t queue = dispatch_get_global_queue(0, 0);
+  dispatch_async(queue, ^{
+      for (int i = 0; i < 10; i++) {
+          [self saveMoney];
+      }
+  });  
+  dispatch_async(queue, ^{
+      for (int i = 0; i < 10; i++) {
+          [self drawMoney];
+      }
+  });
+}
+
+@end
+{% endhighlight %}
+
+#### OSSpinLock 自旋锁
+等待锁的线程会处于忙等 (busy-wait) 状态，一直占用着 CPU 资源，iOS 10 开始过期了，不安全了，会出现优先级反转的问题。
+即如果等待锁的线程优先级比较高，它会一直占用 CPU 资源，优先级低的线程无法释放锁。线程调度，给每个线程一段时间执行任务，如果给的执行时间最后小，看上去像多个线程同时走，时间片轮转调度算法(进程、线程)，线程优先级高就给让其多做些事。
+
+例如现有线程 1/2，两个线程，线程 1 优先级高，线程 2 优先级低，假如线程 2 先进入函数进行了锁定，然后线程 1 进入函数但由于被线程 2 锁了，会忙等，造成 CPU 多分配任务给线程 1 忙等，导致 CPU 资源耗尽无法分配资源给线程 2 以达到线程 2 的解锁释放。
+
+应用需要导入头文件 #import <libkern/OSAtomic.h>
+{% highlight ruby %}
+@implementation OSSpinLockTest {
+  OSSpinLock _lock;
+}
+
+- (instancetype)init {
+  self = [super init];
+  if (self) {
+      _lock = OS_SPINLOCK_INIT;
+  }
+  return self;
+}
+
+- (void)saleTicket {
+    if (OSSpinLockTry(&_lock)) {
+  //    NSInteger oldTicket = self.ticket;
+  //    //睡眠时间越大安全隐患越明显
+  //    sleep(0.2);
+  //    oldTicket--;
+  //    self.ticket = oldTicket;
+  //    OSSpinLockUnlock(&_lock1);
+  //  }
+  static OSSpinLock _lock1 = OS_SPINLOCK_INIT;
+
+  OSSpinLockLock(&_lock1);
+  [super saleTicket];
+  OSSpinLockUnlock(&_lock1);
+}
+
+- (void)saveMoney {
+  OSSpinLockLock(&_lock);
+  [super saveMoney];
+  OSSpinLockUnlock(&_lock);
+}
+
+- (void)drawMoney {
+  OSSpinLockLock(&_lock);
+  [super drawMoney];
+  OSSpinLockUnlock(&_lock);
+}
+
+@end
+{% endhighlight %}
+
+#### os_unfair_lock(互斥锁) 
+是 OSSpinLock 的替代方案，iOS10 及以上可用，从底层看等待 os_unfair_lock 锁的线程会处于休眠状态，而非忙等
+
+应用需要导入头文件 #import <os/lock.h>
+{% highlight ruby %}
+@implementation OSUnfairLlockTest {
+  os_unfair_lock lock; //是个结构体
+  os_unfair_lock lock1; //是个结构体
+}
+
+- (instancetype)init {
+  self = [super init];
+  if (self) {
+    lock = OS_UNFAIR_LOCK_INIT;
+    lock1 = OS_UNFAIR_LOCK_INIT;
+  }
+  return self;
+}
+- (void)saleTicket {
+  os_unfair_lock_lock(&lock1);
+  [super saleTicket];
+  os_unfair_lock_unlock(&lock1);
+}
+
+- (void)saveMoney {
+  os_unfair_lock_lock(&lock);
+  [super saveMoney];
+  os_unfair_lock_unlock(&lock);
+}
+
+- (void)drawMoney {
+  os_unfair_lock_lock(&lock);
+  [super drawMoney];
+  os_unfair_lock_unlock(&lock);
+}
+
+@end
+{% endhighlight %}
+
+#### pthread_mutex 
+p 开头都是扩平台的通用的。互斥锁(等待的线程会处于休眠状态)。
+
+应用需要导入头文件 #import <pthread.h>
+
+* pthread_mutex 普通锁
+{% highlight ruby %}
+@implementation PthreadMutexLockTest {
+  pthread_mutex_t _mutex; // struct
+  pthread_mutex_t _mutex1; // struct
+}
+
+- (void)__initMutex:(pthread_mutex_t *)mutex {
+      // 静态初始化，struct语法定义时候可以初始化
+      // pthread_mutex_t_mutex = PTHREAD_MUTEX_INITIALIZER;
+      // pthread_mutex_t _mutex1 = PTHREAD_MUTEX_INITIALIZER;
+      
+      //初始化属性
+      pthread_mutexattr_t attr;
+      pthread_mutexattr_init(&attr);
+      pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_DEFAULT);
+      
+      //初始化锁
+      pthread_mutex_init(mutex, &attr);
+      // pthread_mutex_init(mutex, NULL); attr 传 NULL 就是 PTHREAD_MUTEX_DEFAULT
+
+      //销毁属性
+      pthread_mutexattr_destroy(&attr);
+}
+
+- (instancetype)init {
+  self = [super init];
+  if (self) {
+    [self __initMutex:&_mutex];
+    [self __initMutex:&_mutex1];
+  }
+  return self;
+}
+
+- (void)dealloc {
+  pthread_mutex_destroy(&_mutex1);
+  pthread_mutex_destroy(&_mutex);
+}
+
+- (void)saleTicket {
+  pthread_mutex_lock(&_mutex1);
+  [super saleTicket];
+  pthread_mutex_unlock(&_mutex1);
+}
+
+- (void)saveMoney {
+  pthread_mutex_lock(&_mutex);
+  [super saveMoney];
+  pthread_mutex_unlock(&_mutex);
+}
+
+- (void)drawMoney {
+  pthread_mutex_lock(&_mutex);
+  [super drawMoney];
+  pthread_mutex_unlock(&_mutex);
+}
+
+@end
+{% endhighlight %}
+
+* pthread_mutex 递归锁
+
+假如 test1 里调用了 test2，这时会出现死锁，解决方式是 test2 换一把锁。
+{% highlight ruby %}
+- (void)test1 {  
+  pthread_mutex_lock(&_mutex);
+  [self recursiveTest2];
+  pthread_mutex_unlock(&_mutex);
+}
+
+- (void)test2 {
+  pthread_mutex_lock(&_mutex);
+  NSLog(@"%s", __func__);
+  pthread_mutex_unlock(&_mutex);
+}
+{% endhighlight %}
+
+但如果 test1 里递归调用了 test1，则需要换成递归锁，即初始化时 pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE)。
+{% highlight ruby %}
+- (void)__initMutex:(pthread_mutex_t *)mutex {
+      //初始化属性
+      pthread_mutexattr_t attr;
+      pthread_mutexattr_init(&attr);
+      pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE);
+      
+      //初始化锁
+      pthread_mutex_init(mutex, &attr);
+      // pthread_mutex_init(mutex, NULL);
+
+      //销毁属性
+      pthread_mutexattr_destroy(&attr);
+}
+
+- (void)recursiveTest {
+  pthread_mutex_lock(&_mutex);
+  static int count = 0;
+  NSLog(@"%s", __func__);
+  count++;
+  if (count < 10) {
+    [self recursiveTest];
+  } else {
+    NSLog(@"recursiveTest end");
+  }
+  pthread_mutex_unlock(&_mutex);
+}
+{% endhighlight %}
+
+* pthread_mutex & cond 条件锁
+
+适用于生产者/消费者模式，也就是一个线程依赖另一个线程做完再回到自己做一些事。假如生产消费，消费时必须保证库存里有东西，即生产了东西才能消费。
+
+{% highlight ruby %}
+@implementation PthreadMutexConditionLockTest {
+  pthread_mutex_t _mutex; // struct
+  NSMutableArray<NSString *> *_feed;
+  pthread_cond_t _condition;
+}
+
+- (void)__initMutex:(pthread_mutex_t *)mutex {
+      //初始化属性
+      pthread_mutexattr_t attr;
+      pthread_mutexattr_init(&attr);
+      pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE);
+      
+      //初始化条件
+      pthread_cond_init(&_condition, NULL);
+  
+      //初始化锁
+      pthread_mutex_init(mutex, &attr);
+      
+      //销毁属性
+      pthread_mutexattr_destroy(&attr);
+}
+
+- (instancetype)init {
+  self = [super init];
+  if (self) {
+    [self __initMutex:&_mutex];
+    _feed = [NSMutableArray array];
+  }
+  return self;
+}
+
+- (void)dealloc {
+  pthread_mutex_destroy(&_mutex);
+  pthread_cond_destroy(&_condition);
+}
+
+- (void)conditionTest {
+  int n  = 10;
+  while (n > 0) {
+    [[[NSThread alloc] initWithTarget:self selector:@selector(__consumer) object:nil] start];    
+//    sleep(2);
+    [[[NSThread alloc] initWithTarget:self selector:@selector(__produce) object:nil] start];
+    n--;
+  }
+}
+// 线程一
+- (void)__consumer {
+  NSLog(@"%s", __func__);
+
+  pthread_mutex_lock(&_mutex);
+  if (_feed.count == 0) {
+    //等待，相当于休眠，这个时候会解锁
+    //被唤醒后 又加锁了
+    pthread_cond_wait(&_condition, &_mutex);
+  }
+  [_feed removeLastObject];
+  NSLog(@"remove object");
+  pthread_mutex_unlock(&_mutex);
+}
+// 线程二
+- (void)__produce {
+  NSLog(@"%s", __func__);
+
+  static int count = 0;
+  pthread_mutex_lock(&_mutex);
+  NSString *obj = [NSString stringWithFormat:@"text_%d", count++];
+  [_feed addObject:obj];
+  NSLog(@"add object");
+
+  //信号: 唤醒 pthread_cond_wait 使其往下走，激活一个等待这个条件的线程
+  pthread_cond_signal(&_condition);
+  //广播: 激活所有等待这个条件的线程
+  // pthread_cond_broadcast(&_condition);
+  
+  pthread_mutex_unlock(&_mutex);
+}
+
+@end
+{% endhighlight %}
+
+#### NSLock
+即对 mutex 普通锁的封装。
+
+{% highlight ruby %}
+类似
+pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE);
+pthread_mutex_init(mutex, &attr); // OR pthread_mutex_init(mutex, NULL)
+
+- (BOOL)lockBeforeDate:(NSDate *)limit; // 在这个时间前等不到锁就睡觉，等到了就加锁成功返回 yes
+{% endhighlight %}
+
+#### NSRecursiveLock
+看 GNU 源码 NSRecursiveLock 则是对 pthread_mutex PTHREAD_MUTEX_RECURSIVE 的封装。API 同 NSLock。
+
+#### NSCondition
+即对 mutex & cond 的封装。 
+
+#### NSConditionLock 
+即对 NSCondition 的封装。用法可以让线程之间的依赖，让多线程变串行。
+
+{% highlight ruby %}
+@implementation ConditionLockLockTest {
+  NSConditionLock *_conditionLock;
+  NSMutableArray *_feed;
+}
+
+- (instancetype)init {
+  self = [super init];
+  if (self) {
+    _feed = [NSMutableArray array];
+    _conditionLock = [[NSConditionLock alloc] initWithCondition:1]; // 条件值 默认是 0
+  }
+  return self;
+}
+
+- (void)conditionTest {
+  [[[NSThread alloc] initWithTarget:self selector:@selector(__three) object:nil] start];
+  [[[NSThread alloc] initWithTarget:self selector:@selector(__one) object:nil] start];
+  [[[NSThread alloc] initWithTarget:self selector:@selector(__two) object:nil] start];
+}
+
+- (void)__one {
+  // 当条件值为 1 时候才加锁，否则在这里等待
+  [_conditionLock lockWhenCondition:1];
+
+//  [_conditionLock lock]; 直接加锁不管条件值
+
+  NSLog(@"%s", __func__);
+  sleep(1);
+  //把锁放开，并把条件值设置为2
+  [_conditionLock unlockWithCondition:2];
+}
+
+- (void)__two {
+  [_conditionLock lockWhenCondition:2];
+
+  NSLog(@"%s", __func__);
+  sleep(1);
+  [_conditionLock unlockWithCondition:3];
+}
+
+- (void)__three {
+  [_conditionLock lockWhenCondition:3];
+  NSLog(@"%s", __func__);
+  sleep(1);
+  [_conditionLock unlock];
+}
+
+@end     
+
+依次执行 __one __two __three
+{% endhighlight %}
+
+#### dispatch_semaphore 信号量
+信号量可以用来控制线程并发访问的最大数量。
+
+{% highlight ruby %}
+// 只有一个线程在工作，即线程最大并发数为 1
+_semaphore = dispatch_semaphore_create(1) 
+
+- (void)__test {
+  // 如果信号量的值 > 0，就让信号量值减1，然后继续执行
+  // 如果信号量的值 <= 0，就会休眠等待，直到信号量值 > 0，就让信号量减 1，然后继续往下执行
+  // DISPATCH_TIME_FOREVER 表示一直等，DISPATCH_TIME_NOW 就马上看能不能等到解锁，不能就失败
+  dispatch_semaphore_wait(_semaphore3, DISPATCH_TIME_FOREVER);
+
+  sleep(1);
+  NSLog(@"test -- %@", [NSThread currentThread]);
+  // 让信号量的值 +1
+  dispatch_semaphore_signal(_semaphore3);
+}
+{% endhighlight %}
+
+#### @synchronized 递归锁
+@synchronized (object) 源码是对 mutex 递归锁的封装，性能很差，不推荐使用。汇编可观察到会调用 objc_sync_enter 进入。
+  
+objc 源码   
+{% highlight ruby %}
+int objc_sync_enter(id obj) {
+  int result = OBJC_SYNC_SUCCESS;
+
+  if (obj) {
+      SyncData* data = id2data(obj, ACQUIRE);
+      ASSERT(data);
+      data->mutex.lock();
+  } else {
+      // @synchronized(nil) does nothing
+      if (DebugNilSync) {
+          _objc_inform("NIL SYNC DEBUG: @synchronized(nil); set a breakpoint on objc_sync_nil to debug");
+      }
+      objc_sync_nil();
+  }
+
+  return result;
+}
+
+typedef struct alignas(CacheLineSize) SyncData {
+    struct SyncData* nextData;
+    DisguisedPtr<objc_object> object;
+    int32_t threadCount;  // number of THREADS using this block
+    recursive_mutex_t mutex;   // 递归锁
+} SyncData;
+
+
+可以理解为
+@synchronized (self) {
+// 根据 self 找到一个把锁，可以传别的对象
+   Code...
+}
+保证每个实例对象都用同一把锁，用 [self class]
+@synchronized ([self class]) {
+
+}
+{% endhighlight %}
+底层实现使用哈希表结构用传入 object 作为 key，找到对应的 value（lock）。
+
+{% highlight ruby %}
+- (void)saveMoney {
+  // self is a lock
+  @synchronized (self) { //objc_sync_enter
+    [super saveMoney];
+  } //objc_sync_exit
+}
+
+- (void)drawMoney {
+  @synchronized (self) {
+    [super drawMoney];
+  }
+}
+{% endhighlight %}
+
+### 各方案性能从高到低对比，仅供参考 😝
+* os_unfair_loc          // 也可推荐，但要看下 iOS 版本
+* OSSpinLock           
+* dispatch_semaphore     // 推荐
+* pthread_mutex          // 推荐
+* dispatch_queue(DISPATCH_QUEUE_SERIAL)
+* NSLock
+* NSCondition
+* pthread_mutex(recursive)
+* NSRecursiveLock
+* NSConditionLock
+* @synchronized
+
+### 汇编分析
+* lldb continue 继续断点，允许程序正常执行 (要么一直执行下去，要么到达下一个断点)。在 LLDB 中，你可以使用 process continue 命令来达到同样的效果，它的别名为 continue，或者也可以缩写为 c。
+
+* lldb next 一行一行走，遇到函数会一笔带过，step over 按钮，会以黑盒的方式执行一行代码。如果所在这行代码是一个函数调用，那么就不会跳进这个函数，而是会执行这个函数，然后继续。LLDB 则可以使用 thread step-over，next，或者 n 命令
+
+* lldb s 如果你确实想跳进一个函数调用来调试或者检查程序的执行情况，step in，或者在 LLDB 中使用 thread step in，step，或者 s 命令。注意，当前行不是函数调用时，next 和 step 效果是一样的。
+
+* step 对应一行代码（代码级别），一段 OC 代码相当于若干行汇编代码。想看一行一行汇编用 si
+
+* lldb si 汇编一行一行走，如果要进入函数用 si
+
+* j 跳转
+
+* ne 一个条件
+
+* jne 如果条件符合跳转
+
+
+#### OSSpinLock 自旋锁汇编调用
+{% highlight ruby %}
+libsystem_platform.dylib`_OSSpinLockLockSlow:
+    0x7fff6bfe1261 <+0>:  pushq  %rbp
+    0x7fff6bfe1262 <+1>:  movq   %rsp, %rbp
+    0x7fff6bfe1265 <+4>:  movl   $0xfffffc18, %ecx         ; imm = 0xFFFFFC18 
+    0x7fff6bfe126a <+9>:  movl   $0xffffffff, %edx         ; imm = 0xFFFFFFFF 
+->  0x7fff6bfe126f <+14>: movl   (%rdi), %eax
+    0x7fff6bfe1271 <+16>: testl  %eax, %eax
+    0x7fff6bfe1273 <+18>: jne    0x7fff6bfe127d            ; <+28>
+    0x7fff6bfe1275 <+20>: xorl   %eax, %eax
+    0x7fff6bfe1277 <+22>: lock   
+    0x7fff6bfe1278 <+23>: cmpxchgl %edx, (%rdi)
+    0x7fff6bfe127b <+26>: je     0x7fff6bfe128c            ; <+43>
+    0x7fff6bfe127d <+28>: cmpl   $-0x1, %eax
+    0x7fff6bfe1280 <+31>: jne    0x7fff6bfe1294            ; <+51>
+    0x7fff6bfe1282 <+33>: testl  %ecx, %ecx
+    0x7fff6bfe1284 <+35>: je     0x7fff6bfe128e            ; <+45>
+    0x7fff6bfe1286 <+37>: pause  
+    0x7fff6bfe1288 <+39>: incl   %ecx
+    0x7fff6bfe128a <+41>: jmp    0x7fff6bfe126f            ; <+14> 可看到又跳回 0x7fff6bfe126f
+    0x7fff6bfe128c <+43>: popq   %rbp
+    0x7fff6bfe128d <+44>: retq   
+{% endhighlight %}
+上边汇编又回到 0x7fff6bfe126f 说明这是一个 while 循环。所以 OSSpinLock 它是自旋锁。
+
+#### pthread_mutex 互斥锁汇编调用
+{% highlight ruby %}
+libsystem_kernel.dylib`__psynch_mutexwait:
+    0x7fff6bf9a4c0 <+0>:  movl   $0x200012d, %eax          ; imm = 0x200012D 
+->  0x7fff6bf9a4c5 <+5>:  movq   %rcx, %r10
+    0x7fff6bf9a4c8 <+8>:  syscall                          这里调用了 syscall 休眠，所以是互斥锁
+    0x7fff6bf9a4ca <+10>: jae    0x7fff6bf9a4d4            ; <+20>
+    0x7fff6bf9a4cc <+12>: movq   %rax, %rdi
+    0x7fff6bf9a4cf <+15>: jmp    0x7fff6bf98ad9            ; cerror_nocancel
+    0x7fff6bf9a4d4 <+20>: retq   
+{% endhighlight %}
+os_unfair_lock 最终也会调用 syscall
+
+### 自旋锁 VS 互斥锁
+用自旋锁比较划算
+* 预计线程等待锁时间短
+* 加锁代码（临界区）经常被调用，但竞争情况很少发生
+* CPU 资源部紧张
+
+用互斥锁比较划算
+* 预计线程等待锁时间长
+* 单核处理器
+* 临界区有 I/O 操作，因为 I/O 占用 CPU
+* 临界区代码比较复杂或循环量大
+* 临界区竞争激烈
+
+Tips：
+{% highlight ruby %}
+加锁后要注意解锁，若没有解锁会造成永远获取不到锁，即死锁。
+{% endhighlight %}

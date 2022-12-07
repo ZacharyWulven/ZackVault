@@ -1,0 +1,764 @@
+---
+layout: post
+title: JavaScript-04
+date: 2022-09-20 16:45:30.000000000 +09:00
+tag: javascript
+---
+
+## 0x01 数组
+* JavaScript 的数组是无类型限制的，即元素可以是任意类型
+* 数组是基于 0，并且使用 32 位数值索引的，第一个元素索引是 0，最大索引是 2^32 - 2
+* JavaScript 数组可以是稀疏的，即元素不一定具有连续的索引，中间可能有间隙
+* 对于非稀疏数组，length 保存数组中元素个数，对于稀疏数组，length 大于所有元素的最高索引
+* Note：******** 数组是一种特殊的对象，索引更像是属性名
+* Note：数组从 Array.prototype 继承属性
+* JavaScript 字符串类似字母数组
+* ES6 新增了一批数组类，统称为“定型数组”（typed array），定型数组具有固定长度和固定数值的元素类型，
+定型数组有极高的性能，支持对二进制数据的字节级访问
+
+### 1 创建数组
+创建数组几种方式
+* 数组字面量
+* 对可迭代对象使用 ... 扩展操作符
+* Array() 构造函数
+* 工厂方法 Array.of() 和 Array.from()
+
+{% highlight ruby %}
+1 数组字面量
+    let empty = [];
+    let primes = [2, 3, 5, 7, 11];
+    let misc = [1.1, true, "a", ]; // 3 种不同类型的元素
+    let base = 1024;
+    let table = [base, base + 1, base + 2]; // 元素可以是表达式
+
+    let b = [[1, {x: 1, y: 2}], [2, {x: 3, y: 4}]]; // 可以包含对象字面量
+
+    // 稀疏数组
+    let count = [1,,3]; // 索引 0 和 2 有元素，索引 1 没有元素
+    let undefs = [,,]; // 这个数组没有元素，但长度为 2, 末尾可以出现逗号，所以长度是 2
+    console.log(undefs[0]);
+    console.log(misc.length);
+    console.log(misc[misc.length - 1]);
+
+2 扩展操作符（*** 重要）
+    let a = [1, 3, 2];
+    let b = [0, ...a, 4]; // [ 0, 1, 3, 2, 4 ]
+    console.log(b);
+    
+扩展操作符是创建数组（浅）副本的一种便捷方式，扩展操作符适用于任何可迭代的对象
+let original = [1,2,3];
+let copy = [...original];
+copy[0] = 0;  // 修改 copy 不会影响 original
+original[0] == 1; // 1
+
+字符串转数组
+    let digits = [..."0123456789AB"];
+    console.log(digits); // ['0', '1', '2', '3', '4', '5', '6', '7','8', '9', 'A', 'B']
+
+
+去掉数组中重复的元素，先放到集合里在生成数组    
+    let letters = [..."hello world"];
+    let newLetters = [...new Set(letters)];
+    console.log(letters);
+    console.log(newLetters); // ['h', 'e', 'l','o', ' ', 'w','r', 'd']
+
+3 Array() 构造函数
+    // 3.1 不传入参数，这样创建一个空数组
+    let a = new Array(); 
+
+    // 3.2 传入指定长度参数
+    // 数组不会存储任何值，索引 0、1 等都没有定义
+    let b = new Array(10);
+
+    // 3.3
+    let c = new Array(5, 4, 3, 2, 1, "testing", "testing");
+    console.log(c);
+    
+4.1 Array.of() 工厂方法
+    let d = Array.of(); // []
+    console.log(d);
+
+    let e = Array.of(10); // [ 10 ]
+    console.log(e);
+    let f = Array.of(1, 2, 3); // [ 1, 2, 3 ]
+    console.log(f);
+
+4.2 Array.from() （*** 重要）
+ES6 新增的另一个工厂方法，这个方法期待一个可迭代对象或类数组对象作为第一个参数，并返回该对象元素的新数组
+即 Array.from(iterable) 与使用扩展操作符 [...iterable] 一样，它也是创建副本的一种机制
+
+类数组对象不是数值对象，但也有一个 length 属性，而且每个属性的键也都是整数，有些浏览器方法返回的值就是类数组对象，
+这样转成数组对象便于后续操作。
+
+    let g = Array.from(f); // [1, 2, 3]
+    console.log(g);
+
+Array.from 也接收第二个可选参数，如果给第二个参数传入了函数，则在构造数组时，源对象的每个元素都会传入这个函数，
+这个函数的返回值将代替原始值称为新数组的元素，比如传入函数 map
+{% endhighlight %}
+
+### 2 读写数组元素
+* 数组特殊的地方在于，只有你使用小于 2^32 - 1 的非负整数作为属性名，数组就自动为你维护 length 属性的值
+* Note：数组是一个特殊的对象，JavaScript 会将数值索引转换为字符串（索引 1 转为 "1"），再将这个字符串作为属性名
+* Note：所有索引都是属性名，但只有介于 0 与 2^32 - 2 之间的整数才是索引
+* 由于数组索引就是一种特殊的对象属性，所以 JavaScript 数组没有所谓的 “越界”，查询
+* Note：任何对象中不存在的属性都不会导致错误，只会返回 undefined
+{% highlight ruby %}
+    let a = ["world"];
+    let v = a[0];
+    a[1] = 3.14;
+    let i = 2;
+    a[i] = 3;
+    a[i + 1] = "hello";
+    a[a[i]] = a[0];
+    console.log(a);
+    
+    对象也可以用数组，1 转为 "1"
+    let o = {};
+    o[1] = "one";
+    console.log(o["1"]);
+    
+    可以使用负数或非负整数来索引数组，此时会为数值添加一个属性
+    另外，如果你使用非负整数的字符串来索引数组，那么这个值会成为数组索引，即 索引 "1000" -> 索引 1000
+    a[-1.23] = true;  // 这样会创建一个属性 "-1.23"
+    a["1000"] = 0; // 数组索引 1000 元素等于 0
+    a[1.000] = 1; // 数组索引 1 相当于 a[1] = 1
+{% endhighlight %}
+
+### 3 稀疏数组
+* 即 length 值大于真实的元素个数
+* 可以使用 Array() 创建稀疏数组，或直接给大于当前 length 的数组索引赋值，或使用 delete 
+* 理解稀疏数组是累积 JavaScript 数组的重要一环，但一般碰到的都是非稀疏数组，可以把稀疏数组当成包含
+undefined 元素的非稀疏数组
+{% highlight ruby %}
+    let a = new Array(5);
+    a = [];
+    a[10] = 12;
+    console.log(a);
+    
+    let b = [1,, 3]; // 稀疏数组
+    let a1 = [,]; // 这数组没有元素 但 length == 1
+    let a2 = [undefined]; // 这个数组有一个 undefined 元素
+    console.log(0 in a1); // false a1 在 index==0 没有元素
+    console.log(0 in a2); // true a2 在 index==0 有 undefined 值
+
+{% endhighlight %}
+
+### 4 数组长度
+* 每个数组都有 length 属性
+* 数组任何索引都小于 length，为了维护这个规则数组有两个行为
+1. 随着索引赋值而变化 length
+2. Note：当 length 设置为小于其当前值的非负整数 n，则任何索引大于或等于 n 的数组元素都将被从数组移除。
+3. 也可以增大 length，这样不会增加数组元素，而是成为一个稀疏数组
+{% highlight ruby %}
+    let a = [1, 2, 3, 4];
+    a.length = 3;
+    console.log(a); // [ 1, 2, 3 ]
+    a.length = 0;
+    console.log(a); // []
+    a.length = 5;
+    console.log(a); // [ <5 empty items> ]
+{% endhighlight %}
+
+### 5 添加和删除元素
+{% highlight ruby %}
+    let a = [];
+    a.push("zero");
+    a.push("one", 2); // 使用 push 添加两个元素
+    a[3] = 3;
+    a.unshift(-1);   // 在数组开头插入元素
+    console.log(a); // [ -1, 'zero', 'one', 2, 3 ]
+    let b = a.pop(); // b == 3, pop 弹出最后一个元素，并返回该元素，同时 length 减一
+    console.log(a);  // [ -1, 'zero', 'one', 2 ]
+    
+    b = a.shift(); // b == - 1, shift 弹出数组第一个元素，并返回该元素，同时 length 减一
+    console.log(a); // [ 'zero', 'one', 2 ]
+    console.log(b);
+    
+    delete a[1];         // 删除数组元素类似给元素赋值 undefined，数组会变稀疏
+    console.log(1 in a); // false
+    console.log(a.length); // length == 3，删除元素不影响数组长度
+{% endhighlight %}
+
+### 6 迭代数组
+forEach()
+1. 需要给它传入一个函数，然后 forEach() 会用数组的每个元素调用用一次这个函数  
+2. 按照顺序迭代数组，而且会将索引作为第二个参数传给函数
+3. 与 for/of 循环不同，forEach() 能够感知稀疏数组，不会对没有的元素调用函数 
+{% highlight ruby %}
+    // 1
+    let letters = [..."Hello World!"];
+    let string = "";
+    for(let letter of letters) {
+        string += letter;
+    }
+    console.log(string);
+
+    // 2 index 写法
+    let everyother = "";
+    for(let [index, letter] of letters.entries()) {
+        everyother += index + "_" + letter + ", "
+    }
+    console.log(everyother);
+
+    // 3 推荐 forEach() 
+    let upperCase = "";
+    letters.forEach(letter => { // 这里使用箭头函数
+        upperCase += letter.toUpperCase();
+    });
+    console.log(upperCase);
+
+
+    let list = [,,3]; // 稀疏数组，不存在元素打印 undefined
+    for(let [index, num] of list.entries()) {
+        console.log(index, num);
+
+    }
+    list.push(undefined);
+    list.forEach((num, index) => { // 忽略没值的元素
+        console.log('forEach list', index, num); // 打印 3 和 undefined
+    });
+{% endhighlight %}
+
+### 7 多维数组
+* JavaScript 并不支持多维数组
+
+{% highlight ruby %}
+    let table = new Array(10);
+    for(let i = 0; i < table.length; i++) {
+        table[i] = new Array(10);
+    }
+
+    for(let row = 0; row < table.length; row++) {
+        for(let col = 0; col < table[row].length; col++) {
+            table[row][col] = row * col;
+        }
+    }
+    console.log("table[3][4]=", table[3][4]); // 12
+{% endhighlight %}
+
+### 8 数组方法
+
+#### 8.1 数组迭代器方法
+1. 所有这些方法都接收第一个参数为函数，然后会用数组的每个元素调用用一次这个函数  
+2. 按照顺序迭代数组，不会对不存在的元素调用函数 
+3. 多数情况下，调用这个函数都会收到 3 个参数，数组元素的值、元素索引、数组本身，
+多数迭代器多会接收第二个参数，如果指定这个参数，则第一个函数在被调用时就好像它是第二参数的方法一样，
+即传入的第二个参数会成为第一个参数传入的函数内部的 this 值
+4. 传入的函数的返回值通常不重要，但不同的方法会以不同的方式处理这个返回值
+5. 箭头函数特别时候这个场景
+
+#### forEach()
+{% highlight ruby %}
+    let data = [1,2,3,4,5]; 
+    let sum = 0;
+    data.forEach(value => { sum += value });
+    console.log("8.1 value=", sum); // 15
+
+    data.forEach(function(value, index, array) { array[index] = value * 2; });
+    console.log(data); // [ 2, 4, 6, 8, 10 ]
+{% endhighlight %}
+
+#### map()
+* 把调用它的数组每个元素分别传给指定函数，返回整个函数的返回值构成数组
+* 传入 map 的函数应该返回值
+* Note：map 返回新数组，并不修改调用它的数组，如果数组是稀疏的，不存在的元素不会调用传入的函数，
+返回数组与原数组一样稀疏，length 相等，缺失元素也相同
+{% highlight ruby %}
+    let a = [1, 2, 3];
+    let b = a.map(x => x * x);
+    console.log(a); // [ 1, 2, 3 ]
+    console.log(b); // [ 1, 4, 9 ]
+{% endhighlight %}
+
+#### filter()
+* 返回一个数组，该数组包含调用它的数组的子数组，且不共享内存
+* 传入的函数应该是断言函数，即返回 true or false 的函数
+* 如果函数返回 true 或返回的值转换为 true，则传给这个函数的元素就是 filter 最终返回的子数组成员
+* Note：filter 会跳过稀疏数组中缺失元素，并返回始终是稠密的，所以可以用 filter 清理掉稀疏数组的缺失元素
+{% highlight ruby %}
+    a = [5, 4, 3, 2, 1];
+    b = a.filter(x => x < 3);
+    console.log(a); // [ 5, 4, 3, 2, 1 ]
+    console.log(b); // [ 3, 1 ]
+    
+    // 稀疏数组 => 稠密数组
+    a = [,,3];
+    b = a.filter(() => true);
+    console.log(a); // [ <2 empty items>, 3 ]
+    console.log(b); // [ 3 ]
+    
+    // 删除 undefined 和 null 并变成稠密数组
+    a.filter(x => x !== undefined && x !== null);
+{% endhighlight %}
+
+#### find() & findIndex()
+* 与 filter 类似，传入断言函数，但找到第一个元素时停止迭代
+* find 返回匹配的元素，如果没有找到匹配的元素返回 undefined
+* findIndex 返回匹配的元素的索引，如果没有找到匹配的元素返回 -1
+{% highlight ruby %}
+    a = [1, 2, 3, 4, 5];
+    b = a.findIndex(x => x === 3);
+    console.log("findIndex=", b); // 2
+    b = a.findIndex(x => x < 0);
+    console.log(b);   // -1
+    b = a.find(x => x % 5 == 0);
+    console.log(b);  // 5
+    b = a.find(x => x % 7 == 0);
+    console.log(b); // undefined
+{% endhighlight %}
+
+#### every() & some()
+* 会对数组元素调用传入的断言函数，最终返回 true or false
+* every 类似数学上的”全量“，断言所有元素都返回 true 时才返回 true
+* some 类似数学上的“存量”，只有有一个元素返回 true 就返回 true，所有都返回 false 时才返回 false
+* Note：在空数组上调用 every 返回 true，some 返回 false
+
+{% highlight ruby %}
+    b = a.every(x => x < 10); // true: 所有值都小于 10
+    b = a.every(x => x % 2 === 0); // false: 并非所有值都是偶数
+    
+    b = a.some(x => x % 2 === 0); // true: a 包含偶数
+    b = a.some(isNaN); // false: a 没有 NaN
+    
+    console.log([].every(isNaN)); // true
+    console.log([].some(isNaN)); // false
+{% endhighlight %}
+
+#### reduce() & reduceRight()
+* 使用我们指定的函数归并数组元素，最终产生一个值
+* 在函数式编程中，归并是一个常见操作，有时候也称为注入（inject）或折叠（fold）
+* 无论 reduce 还是 reduceRight 都不接收用于指定归并函数 this 值的可选参数，它们用可选的初始值参数取代了这个值
+* 只要是能把两个值组合成一个同类型值的函数，都可以用作归并函数
+
+##### reduce
+* reduce 接收两个参数，第一个参数时执行归并操作的函数，这个函数作用就是把两个值归并或组合为一个值并返回这个值，
+第二个参数可选的是传给归并函数的初始值
+* 与 forEach 和 map 不同，我们熟悉的数组的值、索引、数组本身作为这里第2、3、4 个参数，而第一个参数时目前为止归并操作的累计结果
+* 在第一次调用这个函数时，第一个参数作为 reduce 的第二个参数的初始值，在后续调用中，第一个参数则是上一次调用这个函数的返回值
+* 在第一个例子中初次调用归并函数传入的是 0 和 1，归并函数把它们相加返回 1，再次调用传入 1 和 2，返回 3，以此类推
+* Note：如果不写第二个参数，reduce 会使用数组第一个元素作为初始值，这意味着首次调用以数组第一个和第二个元素作为其第一个和第二个参数
+* Note：如果不传初始值参数，在空数组上调用 reduce 会导致 TypeError
+* Note：如果调用它时只有一个值，比如用只有一个元素的数组且不传初始值，或用空数组调用但传了初始值，则 reduce 直接返回整个值，不会调用归并函数
+
+##### reduceRight
+* 与 reduce 类似只不过是从高索引向低索引（从右往左）进行处理
+
+{% highlight ruby %}
+    a = [1, 2, 3, 4, 5];
+    b = a.reduce((x, y) => x + y, 0); // 15: 所有值之和
+    console.log(b);
+或 写成这样调用过程更直观些
+    a.reduce(function(x, y) {
+      console.log("x is", x); // sum
+      console.log("y is", y); // current value
+      return x + y;
+    }, 0);
+或 不写第二个参数，
+    b = a.reduce(function(x, y) {
+        console.log("x is", x); // sum
+        console.log("y is", y); // current value
+        return x + y;
+    });
+    
+    b = a.reduce((x, y) => x*y, 1);  // 120: 所有值之积
+    console.log(b);
+    b = a.reduce((x, y) => (x > y) ? x : y); // 5 最大值
+    console.log(b);
+    
+    // reduceRight
+    a = [2, 3, 4];
+    b = a.reduceRight((acc, val) => Math.pow(val, acc));
+    console.log(b); // 2.4178516392292583e+24
+{% endhighlight %}
+
+### 8.2 flat() 和 flatMap() 打平数组
+* flat 用于生成新数组，新数组与它调用 flat 的数组有相同的元素，只不过元素会被打平填充到新数组中
+* 如果不传参调用 flat，则会打平一级嵌套
+
+* flatMap 与 map 类似，只不过返回数组会自动被打平，就行传给 flat 一样，即 a.flatMap(f) 等同于（但效应远高于） a.map(f).flat()
+* flatMap 可以理解为一个通用版的 map，可以把输入数组中的一个元素映射为输出中的多个元素
+
+{% highlight ruby %}
+    let a = [1, [2, 3]].flat()
+    console.log(a);  // [ 1, 2, 3 ]
+    a = [1, [2, [3]]].flat();  // 不传参调用 flat，则会打平一级嵌套
+    console.log(a);  // [ 1, 2, [ 3 ] ]  
+
+    a = [1, [2, [3, [4]]]];
+    let b = a.flat(1);
+    console.log(b);   // [ 1, 2, [ 3, [ 4 ] ] ] 
+    b = a.flat(2);
+    console.log(b);   // [ 1, 2, 3, [ 4 ] ]
+    b = a.flat(3);
+    console.log(b);   // [ 1, 2, 3, 4 ]
+    b = a.flat(4);
+    console.log(b);   // [ 1, 2, 3, 4 ]
+    
+    
+    let phrases = ["hello world", "the definitive guide"];
+    let words = phrases.flatMap(phrase => phrase.split(" "));
+    console.log(words);
+
+    // * flatMap 允许把输入元素映射为空数组，这样打平后并不会出现在输出数组中
+    b = [-1, -2, 1, 2].flatMap(x => x < 0 ? [] : Math.sqrt(x));
+    console.log(b); 
+{% endhighlight %}
+
+### 8.3 使用 concat() 添加数组
+* concat 方法创建并返回一个新数组，新数组包含调用 concat 方法的数组元素以及传给 concat 的参数，
+如果参数中有数组，则拼接的是它们的元素而非数组本身
+* Note：concat 不会递归打平数组的数组，concat 并不修改调用它的数组（原始数组不会改变）
+* concat 代价有点大，优先考虑 push() 和 splice() 就地修改数组是否满足需求
+
+{% highlight ruby %}
+    let a = [1, 2, 3];
+    b = a.concat(4, 5);
+    console.log(b);       // [ 1, 2, 3, 4, 5 ]
+    b = a.concat([4, 5], [6, 7]);
+    console.log(b);       // [ 1, 2, 3, 4, 5, 6, 7 ] 数组被打平
+    b = a.concat([4], [5, [6, 7]]);
+    console.log(b);       // [ 1, 2, 3, 4, 5, [ 6, 7 ] ] 数组只被打平一级
+    console.log(a);       // [ 1, 2, 3 ] 原始数组没有改变
+{% endhighlight %}
+
+### 8.4 通过 push() pop() shift() unshift() 实现栈和队列
+#### push pop
+* push 用于在数组末尾添加一个或多个元素，并返回数组新长度，与 concat 不同 push 不会打平参数
+* pop 用于删除数组末尾元素，减少数组长度，并返回删除
+* push 和 pop 都会就地修改数组
+* Note：push 不会打平数组，因此如果想把数组元素都加到另一个数组中可以使用扩展操作符，语法 a.push(...values);
+
+####  shift unshift
+* 与 push 、pop 类似，只不过它们是从数组开头插入和删除元素
+* unshift 用于在数组开头添加一个或多个元素，已有的元素索引会向高位索引移动，并返回数组新长度
+* shift 用于删除并返回数组的一个元素，所有后续元素都向下移动一个位置
+* Note：使用 shift unshift 可以实现栈但效率不如 push pop，因为需要移动元素
+* Note：unshift 如果传多个参数，会一次性插入多个参数元素，要注意顺序
+{% highlight ruby %}
+用 push pop 实现栈
+    let stack = [];
+    stack.push(1, 2);
+    stack.pop();
+    stack.push(3)
+    stack.pop();
+    stack.push([4, 5]);
+    console.log(stack);
+    stack.pop();
+    stack.push(...[2,3,4]); // [ 1, 2, 3, 4 ]
+    console.log(stack);
+    stack.pop();
+    stack.push(...[5,[6,7]]); // [ 1, 2, 3, 5, [ 6, 7 ] ]
+    console.log(stack);
+
+用 push shift 实现队列
+    let queue = [];
+    queue.push(1, 2);
+    queue.shift();
+    console.log(queue);
+    queue.push(3, 4);
+    queue.shift();
+    queue.shift();
+    console.log(queue);  // [ 4 ]
+
+Note：unshift 如果传多个参数，会一次性插入多个参数元素，要注意顺序
+    let a = [];
+    a.unshift(1);
+    a.unshift(2);
+    console.log(a); // [ 2, 1 ]
+
+    a = [];
+    a.unshift(1, 2);
+    console.log(a); // [ 1, 2 ]
+{% endhighlight %}
+
+### 8.5 slice()、splice()、fill()、copyWithin()
+* 这 4 个方法用于处理连续区域或子数组或数组切片，功能有提取、替换、填充、复制切片
+
+#### slice
+* slice 返回一个数组切片或子数组，这个方法接收两个参数，分别用于指定要返回切片的起始位置。
+* 返回子数组区间是 [参数一，参数二)，不包括参数二位置
+* 如果只指定一个参数，则返回这个参数元素到末尾所有元素，即 [参数, end]
+* 如果参数是负数，相对于数组长度指定元素，-1 是数组最后一个元素，-2 是数组倒数第二个，以此类推
+* Note：slice 不修改原数组
+{% highlight ruby %}
+    console.log("slice------");
+    let a = [1, 2, 3, 4, 5];
+    let b = a.slice(0, 3);
+    console.log(b); // [ 1, 2, 3 ]
+    b = a.slice(3);
+    console.log(b); // [ 4, 5 ]
+    b = a.slice(1, -1);
+    console.log(b); // [ 2, 3, 4 ]
+    b = a.slice(-3, -2);
+    console.log(b); // [ 3 ]
+{% endhighlight %}
+
+#### splice
+* 是对数组进行插入和删除的通用方法
+* splice 会修改调用它的数组
+* 第一个参数指定插入或删除操作的起始位置
+* 第二个参数指定要从数组中删除（切割出来）的元素个数，这俩方法不同之处在于 slice 第二个参数是终点，而 splice 第二个参数是参数长度，
+如果省略第二个参数，splice 将从起始位置到结尾所有元素都删除，splice 返回被删除元素的数组，如果没有删除元素返回空数组
+* splice 前两个元素指定要删除哪些元素，这俩参数后还可以跟任意多个参数，表示要在第一个参数指定的位置插入到数组中的元素
+{% highlight ruby %}
+删除元素
+    let a = [1, 2, 3, 4, 5, 6, 7, 8];
+    let b = a.splice(4); // 删除索引 4 以及之后所有元素
+    console.log(a);   // [ 1, 2, 3, 4 ]
+    console.log(b);   // [ 5, 6, 7, 8 ]
+    b = a.splice(1, 2);
+    console.log(a);   // [ 1, 4 ]
+    b = a.splice(1, 1);
+    console.log(a);   // [ 1 ]
+
+删除并插入元素
+    a = [1,2,3,4,5];
+    b = a.splice(2,0, "a", "b");
+    console.log(a);    // [1, 2, 'a', 'b', 3, 4, 5]
+    console.log(b);    // 什么也没删除 返回空数组 []
+
+    b = a.splice(2,2,[1,2], 9);
+    console.log(a);    // [ 1, 2, [ 1, 2 ], 9, 3, 4, 5 ]
+    console.log(b);    // [ 'a', 'b' ]
+{% endhighlight %}
+
+#### fill
+* fill 方法将数组的元素设置为指定的值，它会修改调用它的数组，并返回修改后的数组
+* fill 第一个参数是要填充的值
+* 可选的第二个参数是起始索引，如果省略从索引 0 开始填充
+* 可选的第三个参数是终止索引，但不包括终止索引。如果省略这个参数将填充到数组末尾
+* 可传入负值的索引，如下列
+{% highlight ruby %}
+    console.log("-----fill------------");
+    let a = new Array(5);
+    a.fill(0);
+    console.log(a);  // [ 0, 0, 0, 0, 0 ]
+    a.fill(9, 1); // 从索引 1 还是填充 9
+    console.log(a);  // [ 0, 9, 9, 9, 9 ]
+    a.fill(8, 2, -1);  将索引 2、3 填充 8
+    console.log(a);  // [ 0, 9, 8, 8, 9 ]
+{% endhighlight %}
+
+#### copyWithin
+* 把数组切片复制到数组中新的位置，它会就地修改数组并返回修改后的数组，但不改变数组长度
+* 第一个参数指定要把第一个元素复制到的目标索引
+* 第二个参数指定要复制的第一个元素索引，如果省略则默认值为 0
+* 第三个参数指定要复制的元素切片终止索引，如果省略则使用数组长度。从起始索引到终止索引的元素会被复制
+* 与 slice 一样可传入负值索引
+* copyWithin 模仿 memmove 函数，即使来源和目标有重叠复制也是正确的
+{% highlight ruby %}
+声明可以理解为 copyWithin(to_index, start_index = 0, end_index=array.length)
+
+    let a = [1,2,3,4,5];
+    a.copyWithin(1); // 复制 整个 a 到索引 1
+    console.log(a);  // [ 1, 1, 2, 3, 4 ]
+    a.copyWithin(2, 3, 5); // 把最后两个元素复制到索引 2
+    console.log(a);  // [ 1, 1, 3, 4, 4 ]
+    a.copyWithin(0, -2); // 复制 4 4 到索引 0
+    console.log(a);  // [ 4, 4, 3, 4, 4 ]
+{% endhighlight %}
+
+### 8.6 数组索引与排序方法
+
+#### indexOf() 和 lastIndexOf()
+* indexOf() 和 lastIndexOf() 从数组中搜索指定的值并返回第一个找到的元素索引，如果没有找到返回 -1
+* indexOf 从前往后搜索
+* lastIndexOf 从后往前搜索
+* Note：indexOf 和 lastIndexOf 使用 === 比较它们的参数和数组元素，如果数组包含对象则检查两个引用是否引用同一个对象
+* Note：indexOf 和 lastIndexOf 都接收第二个可选参数，指定从哪个索引开始搜索，如果省略这个参数，indexOf 会从头开始，而 lastIndexOf 会从尾部开始，
+第二个参数可以是负值，比如 -1 是最后一个元素索引
+* Note：字符串也有 indexOf 和 lastIndexOf，与数组的类似，区别是字符串的第二个参数如果是负值会被当成 0
+{% highlight ruby %}
+    let a = [0,1,2,1,0];
+    let b = a.indexOf(1);
+    console.log(b);    // 1
+    b = a.lastIndexOf(1);
+    console.log(b);    // 3
+    b = a.indexOf(3);
+    console.log(b);    // -1 
+
+    // 使用 indexOf 查找除第一个之外的匹配值
+    function findAll(a, x) {
+        let result = [],  // 要返回的找到的数组索引
+        len = a.length,   // 要搜索的数组长度
+        pos = 0;          // 搜索的起始长度
+        while(pos < len) {
+            pos = a.indexOf(x, pos);
+            if (pos === -1) break;
+            result.push(pos);
+            pos++;
+        }
+        return result;
+    }
+    
+{% endhighlight %}
+
+#### includes
+* ES2016 的 includes 包含一个参数，如果数组包含该值则返回 true，否则返回 false，它并不告诉你值的索引，只告诉你是否存在
+* 这个方法实际是测试数组成员是否属于某个集合，不过注意数组并非集合的有效表示方式，如果数组元素数量庞大，应选择 Set 对象
+* Note：includes 与 indexOf 有个重要区别，indexOf 使用 === 操作符同样的算法测试相等性，而该相等算法将非数值的值看成与其他值都不一样，
+包括与其自身也不一样。而 includes 则认为 NaN 与自身相等
+* Note：因此 indexOf 无法检测 NaN 的值，但 includes 可以
+{% highlight ruby %}
+    let a = [1, true, 3, NaN];
+    let b = a.includes(true);
+    console.log(b);      // true
+    b = a.includes(2);
+    console.log(b);      // fasle
+    b = a.includes(NaN);
+    console.log(b);      // true
+    b = a.indexOf(NaN);
+    console.log(b);      // -1 即没找到
+{% endhighlight %}
+
+#### sort
+* sort 对数组元素就地排序并返回排序后的数组
+* 在不传参调用 sort 时，sort 按字母顺序对数组元素进行排序（如果有必要会临时把它们转为字符串再比较）
+* 如果数组包含未定义的元素，它们会被排到数组末尾
+* 如果要对数组执行非字母排序，必须传入一个比较函数作为参数，
+1. 如果第一个参数应该出现在第二个参数前面，则比较函数应该返回一个小于 0 的数值
+2. 如果第一个参数应该出现在第二个参数后面，则比较函数应该返回一个大于 0 的数值
+3. 如果两个值相等，即它们顺序不重要，则返回 0
+
+{% highlight ruby %}
+    let a =["banana", "cherry", "apple"];
+    a.sort(); // [ 'apple', 'banana', 'cherry' ]
+    console.log(a);
+
+    a = [33, 4, 222, 111];
+    a.sort(function(a,b) { return a - b; });
+    console.log(a);
+    a.sort((a, b) => b - a);
+    console.log(a);
+
+    a = ["ant", "Bug", "cat", "Dog"];
+    a.sort();  // 区分大小写排序
+    a.sort(function(a, b) {    // 不区分大小写排序
+        let c = a.toLowerCase();
+        let d = b.toLowerCase();
+        if (c < d) return 1;
+        if (c > d) return -1;
+        return 0;
+    });
+    console.log(a);
+{% endhighlight %}
+
+#### reverse
+* reverse 反转数组元素的顺序，并返回反序后的数组
+* 这个方法会就地反序，即对调用它的数组进行反序
+{% highlight ruby %}
+    let a = [1, 2, 3];
+    a.reverse();
+    console.log(a); // [ 3, 2, 1 ]
+{% endhighlight %}
+
+### 8.7 数组转字符串
+* Note：如果想把数组文本内容保存起来可以使用 JSON.stringify() 对数组进行序列化，而不是使用本节的方法
+
+#### join
+* 将数组所有元素转为字符串，然后把它们拼接起来并返回结果字符串
+* 可以指定一个可选的字符串参数，用于分隔结果字符串中的元素，默认使用逗号“，”
+* join 执行的是 String.split() 方法的反向操作，后者通过把字符串分割为多个片段来创建数组
+{% highlight ruby %}
+    let a = [1, 2, 3];
+    let c =  a.join();
+    console.log(c);  // 1,2,3
+    c = a.join(" ");
+    console.log(c);  // 1 2 3
+    c = a.join("");
+    console.log(c);  // 123
+    let b = new Array(10);
+    c = b.join("-");
+    console.log(c);  // ---------
+{% endhighlight %}
+
+#### toString
+* 数组的 toString 方法逻辑与没有参数的 join 方法一样
+{% highlight ruby %}
+    console.log([1,2,3].toString());       // 1,2,3
+    console.log(["a","b","c"].toString()); // a,b,c
+    console.log([1,[2,"c"]].toString());   // 1,2,c
+{% endhighlight %}
+
+#### toLocaleString
+* toLocaleString 方法是 toString 的本地化版本，将数组元素转为字符串，再使用实现定义的本地分隔符字符串拼接结果字符串
+
+### 8.8 静态数组函数
+* 3 个静态数组函数
+1. Array.of()   创建新数组的工厂方法
+2. Array.from() 创建新数组的工厂方法
+3. Array.isArray() 用于确定一个未知的值是不是数组
+{% highlight ruby %}
+    console.log(Array.isArray([])); // true
+    console.log(Array.isArray({})); // false
+{% endhighlight %}
+
+### 9 类数组对象
+Note：JavaScript 的数组具有一些其他对象不具备的特性
+* 数组 length 属性会在新元素加入时自动更新
+* 设置 length 为更小会截断数组
+* 数组从 Array.prototype 继承有用的方法
+* Array.isArray() 对数组返回 true
+
+实际中，只要对象有一个数值属性 length，而且有相应的非负整数属性，那么就完全可以视通为数组。实践中很多数组算法即适用于真的数组，也适用于类数组对象，
+特别是视为只读或至少不会修改数组长度的情况下。
+
+下面一个例子是为一个常规对象添加属性，让他成为类数组对象，然后再遍历得到伪数组的元素
+{% highlight ruby %}
+    let a = {};
+    let i = 0;
+    while(i< 10) {
+        a[i] = i * i;
+        i++;
+    }
+    a.length = i;
+    // 像数组一样遍历这个对象
+    let total = 0;
+    for(let j = 0; j < a.length; j ++) {
+        total += a[j];
+    }
+    console.log(total);
+    
+        // 测试对象是不是类数组对象
+        function isArrayLike(o) {
+        if (o && typeof o == "object"      // o 是对象 并且不是 null 或 undefined
+            && Number.isFinite(o.length)   // length 是有限的
+            && o.length >= 0 
+            && Number.isInteger(o.length)  // length 是整数
+            && o.length < 4294967295) {    // length < 2^32 - 1
+                return true
+        }
+        return false;
+    }
+{% endhighlight %}
+
+因为类数组对象不继承自 Array.prototype 所以无法在其身上直接调用数组的方法，可以使用 Function.call() 方法
+{% highlight ruby %}
+    a = {"0": "a", "1": "b", "2": "c", length: 3};
+    let b = Array.prototype.join.call(a, "+");
+    console.log(b);     // a+b+c
+    b = Array.prototype.map.call(a, x => x.toUpperCase());
+    console.log(b);     // [ 'A', 'B', 'C' ]
+    b = Array.prototype.slice.call(a, 1, 3);  // 返回了真正的数组
+    console.log(b);     // [ 'b', 'c' ]
+    b = Array.from(a);  // 更容易的数组复制
+    console.log(b);     // [ 'a', 'b', 'c' ]
+{% endhighlight %}
+
+### 10 作为数组的字符串
+* Note：JavaScript 字符串的行为类似于 UTF-16 Unicode 字符的只读数组
+* 除了使用 chatAt 方法访问个别字符，还可以用方括号进行访问
+* typeof 对字符串返回 "string"，把字符串传给 Array.isArray() 返回 false
+* Note：字符串是不可修改的值，因此在把它们当成数组来用时，它们是只读数组，像 push、sort 等方法对字符串不起作用，尝试修改字符串的值会静默失败
+{% highlight ruby %}
+    console.log("作为数组的字符串");
+    let s = "test";
+    console.log(s.charAt(0)); // t
+    console.log(s[1]);        // e
+
+    // 可以对字符串使用泛型的字符串方法
+    let a = Array.prototype.join.call("JavaScript", " ");
+    console.log(a); // J a v a S c r i p t
+{% endhighlight %}
+

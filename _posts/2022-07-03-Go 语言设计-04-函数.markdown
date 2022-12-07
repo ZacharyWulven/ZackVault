@@ -1,0 +1,467 @@
+---
+layout: post
+title: Go 语言设计-04-函数
+date: 2022-07-03 16:45:30.000000000 +09:00
+tag: Go
+---
+
+
+## 函数声明
+每个函数声明都包含一个名字、一个形参、一个可选的返回值列表以及函数体。
+如果形参的类型相同，那么只需要写一次类型，但形参必须是连续的。
+格式如下
+{% highlight ruby %}
+func name(parameter-list) (result-list) {
+  body
+}
+{% endhighlight %}
+
+空白参数（下划线）用来强调形参在函数中未使用
+{% highlight ruby %}
+func first(x int, _ int) int {
+  return x
+}
+{% endhighlight %}
+
+### 函数签名
+函数的类型称为函数签名
+
+{% highlight ruby %}
+Note
+当两个函数拥有相同的“形参列表和返回值时”，认为这俩函数的类型或签名相同。
+而形参和返回值的名字不会影响到函数类型
+
+Go 语言没有默认参数值的概念也不能指定实参名，所以形参和返回值的命名不会对调用方有任何影响
+{% endhighlight %}
+
+形参变量都是函数的局部变量，形参和命名返回值同属于函数最外层作用域的局部变量
+{% highlight ruby %}
+Note
+实参是值传递，所以函数接收到的是实参的副本，修改函数形参不会影响到调用者提供的实参。
+但如果实参是引用类型，比指针、slice、map、函数或管道，那么可能会间接的修改实参变量。
+{% endhighlight %}
+
+你可能会看到有些函数声明没有函数体，那么说明这个函数使用除 Go 以外的语言实现
+{% highlight ruby %}
+package math
+func Sin(x float64) float64 用汇编语言实现
+{% endhighlight %}
+
+## 递归
+许多编程语言使用固定长度的函数调用栈，大小在 64KB~2MB 之间。递归深度会受限于固定长度的栈大小，
+所以当进行深度递归调用时必须谨防栈溢出。固定长度的栈甚至会有一定的安全隐患
+{% highlight ruby %}
+Go 语言实现了可变长度的栈，栈的大小会随着使用而增长，可达到 1GB 左右的上限。
+{% endhighlight %}
+
+使得我们不要担心溢出问题。
+
+## 多返回值
+{% highlight ruby %}
+一个多值调用可以作为实参传递给拥有多个形参的函数。
+例如
+func multipleValue() (string, error) {
+  return "hello", nil
+}
+fmt.Println(multipleValue())
+{% endhighlight %}
+
+如果一个函数有命名返回值，则可以省略 return 语句的操作数，这叫裸返回。因为裸返回并不能使代码更易于理解，所以保守使用。
+{% highlight ruby %}
+返回值像形参一样声明后，每一个命名的返回值会声明为一个局部变量，并根据类型初始化为 0 值
+
+func bare(url string) (count int, err error) {
+  if len(url) == 0 {
+    返回 0 <nil>
+    return            
+  }
+  count, err = len(url), nil
+  return
+}
+
+一个返回多值调用可以作为一个单独的实参传递给拥有多个形参的函数中
+fmt.Println(luo("123"))
+fmt.Println(luo(""))
+{% endhighlight %}
+
+### 安装 golang.org/x/
+golang.org/x/ 下的包由 Go 团队负责设计和维护，并不属于标准库，因为还在开发中
+{% highlight ruby %}
+https://cs.opensource.google/go/x/net
+
+如果被墙，可以 
+git clone git@github.com:golang/net.git to $GOPATH/src/golang.org/x/net 
+{% endhighlight %}
+
+
+## 错误 error
+习惯上讲错误作为最后一个结果返回
+
+如果错误只有一种情况，结果通常设置为布尔类型。
+{% highlight ruby %}
+value, ok := cache.Lookup(key)
+{% endhighlight %}
+
+更多的情况错误的原因多种多样，往往使用 error 类型
+
+与其他语言不同，Go 语言通过使用普通的值而非异常来报告错误。尽管 Go 有异常机制，但 Go 的异常只是针对程序 bug 导致预期外的错误。
+而不能作为常规的错误处理方法出现在程序中。
+
+{% highlight ruby %}
+func findLinks(url string) ([]string, error) {
+  resp, err := http.Get(url)
+  if err != nil { // 如果 http.Get 失败则直接返回
+    return nil, err
+  }
+  if resp.StatusCode != http.StatusOK {
+    resp.Body.Close()
+    return nil, fmt.Errorf("getting %s: %s", url, resp.Status)
+  }
+  doc, err := html.Parse(resp.Body)
+  resp.Body.Close()
+  if err != nil { // 如果 html.Parse 失败，构建一个 error 返回
+    return nil, fmt.Errorf("parsing %s as HTML: %v", url, err)
+  }
+  return visit(nil, doc), nil
+}
+
+fmt.Errorf 使用 fmt.Sprintf 函数格式化一条消息并返回一个新的错误值
+{% endhighlight %}
+
+设计一个错误消息时候应该慎重，确保每一条消息的描述都是由意义的，包含充足的相关信息，并保持一致性，不论被同一个函数还是同一个包下的一组函数返回时，
+这样的错误都可以保持统一的形式和错误处理方式。
+
+也可以使用 log.Fatalf 进行错误处理
+
+{% highlight ruby %}
+Go 语言的错误处理有个特定的规律，进行错误检测之后，检测到失败的情况往往都在成功之前。
+跟 Swift 很像，Swift 用 guard 处理前置错误
+{% endhighlight %}
+
+
+### 文件结束标识
+io 包保证任何由文件结束引起的读取错误，始终都会得到一个与众不同的错误--io.EOF
+
+{% highlight ruby %}
+  in := bufio.NewReader(os.Stdin)
+  for {
+    r, _, err := in.ReadRune()
+    if err == io.EOF {
+      break // 结束读取
+    }
+    if err != nil {
+      return fmt.Errorf("read failed: %v", err)
+    }
+  }
+{% endhighlight %}
+
+## 函数变量
+* 函数在 Go 语言中是头等重要的值
+{% highlight ruby %}
+func main() {
+
+  f := square
+  fmt.Println(f(3))
+
+  f = negative
+  fmt.Println(f(5))
+
+  //  f = product // 编译错误 因为函数类型不同
+
+}
+
+func square(n int) int {
+  return n * n
+}
+
+func negative(n int) int {
+  return -n
+}
+
+func product(m, n int) int {
+  return m * n
+}
+
+{% endhighlight %}
+
+{% highlight ruby %}
+Note
+函数属于引用类型，函数类型的零值是 nil （空值），调用一个空的函数将导致宕机
+
+函数变量可以和空值进行比较，
+但它们本身不可比较，所以不可以出现在 map 当做 key
+
+%*s 中的 * 号输出带有可变数量空格的字符串，输出的宽度和字符串则由参数 4 和 "" 提供
+    fmt.Printf("%*s</%s>\n", 4, "", "123")
+{% endhighlight %}
+
+
+### 匿名函数 （闭包）
+* 命名函数只能在包级别的作用域进行声明，但我们可以使用“函数字面量”在任何表达式内指定函数变量。
+* Note 函数字面量就像函数声明，但 func 关键字后面没有函数名称，它是一个表达式，它的值称为匿名函数
+* 函数字面量在我们使用时才定义
+* Note 格式 func(形参) (返回值) {函数体}
+
+{% highlight ruby %}
+  s := strings.Map(func(r rune) rune {
+    return r + 1
+  }, "HAL-9000")
+  println(s)
+{% endhighlight %}
+
+* Note 更重要的是这种方式定义的函数能够获取整个词法寒假，因此里层的函数可以使用外层函数中的变量
+{% highlight ruby %}
+func squares() func() int {
+  var x int
+  return func() int {
+    x++
+    return x * x
+  }
+}
+  f1 := squares()
+  fmt.Println(f1())
+  fmt.Println(f1())
+{% endhighlight %}
+
+网页爬虫的核心是解决图的遍历，网络趴着使用广度优先遍历
+
+## Warning：捕获迭代变量
+dir 在 for 循环引进的一个块作用域内进行声明，在循环里创建的所有函数变量共享相同的变量--一个可访问的存储位置，而不是固定的值。
+dir 变量的值在不断迭代更新中，因此当调用清理函数时 dir 变量已经被 for 循环更新多次，因此 dir 实际取的是最后一次迭代的值，
+并不是之前那次迭代的值，而且 os.RemoveAll 都试图删除同一个目录。
+
+* 通过引入一个内部变量来解决问题，即 dir := d 
+* 要注意 for 循环中这种隐患
+
+{% highlight ruby %}
+  var rmdirs []func()
+  for _, d := range os.TempDir() {
+    dir := d                    // Note 注意，这一行是必须的
+    os.MkdirAll(dir, 0755)
+    rmdirs = append(rmdirs, func() {
+      os.RemoveAll(dir)
+    })
+  }
+{% endhighlight %}
+
+### 变长函数
+变长函数被调用时候可以有可变的参数个数。在参数列表最后的类型名称之前使用省略号“...”表示声明一个变长函数，
+调用这个函数时候可以传递该类型任意数目的参数。
+
+{% highlight ruby %}
+func main() {
+
+  fmt.Println(sum(1, 2, 3, 4))
+
+  等价于
+  vals := []int{1, 2, 3, 4}
+  fmt.Println(sum(vals...))
+}
+
+// vals 是一个 int 类型的 slice
+func sum(vals ...int) int {
+  total := 0
+  for _, val := range vals {
+    total += val
+  }
+
+  return total
+}
+{% endhighlight %}
+
+* 尽管 ...int 参数就像函数体内的 slice 但变长函数的类型和一个带有普通 slice 参数的函数类型不同
+{% highlight ruby %}
+func f(...int) {}
+
+func g([]int) {}
+ 
+fmt.Printf("f type is %T\n", f)   f type is func(...int)
+fmt.Printf("g type is %T\n", g)   g type is func([]int)
+{% endhighlight %}
+
+变长函数通常用于格式化字符串
+{% highlight ruby %}
+func errorf(linenum int, format string, args ...interface{}) {
+  fmt.Fprintf(os.Stderr, "Line %d: ", linenum)
+  fmt.Fprintf(os.Stderr, format, args)
+  fmt.Fprintln(os.Stderr)
+}
+  linenum, name := 12, "count"
+  errorf(linenum, "undefined: %s", name)  Line 12: undefined: [count]
+{% endhighlight %}
+
+### 延迟函数调用 defer
+* defer 语句就是一个普通的函数或方法调用，在调用之前加上 defer 关键字。不论函数是否正常执行 defer 语句都会执行。
+* 函数结束后才执行 defer 语句，执行的时候以调用 defer 语句顺序的倒序执行。
+{% highlight ruby %}
+先调用 second 再调用 first
+func test() {
+  defer fmt.Println("first")
+  defer fmt.Println("second")
+}
+
+{% endhighlight %}
+
+* defer 语句经常用于成对操作，比如打开和关闭，连接和断开，加锁和解锁。
+* 正确使用 defer 语句的地方是在成功获得资源之后
+
+同样也可以使用在其他方面，比如关闭一个打开的文件
+{% highlight ruby %}
+func ReadFile(filename string) ([]byte, error) {
+  f, err := os.Open(filename)
+  if err != nil {
+    return nil, err
+  }
+  defer f.Close()
+  return io.ReadAll(f)
+}
+
+----
+var mu sync.Mutex
+var m = make(map[string]int)
+
+func lookup(key string) int {
+  mu.Lock()
+  defer mu.Unlock()
+  return m[key]
+}
+{% endhighlight %}
+
+defer 语句也可以用来调试一个复杂函数，即在“入口”和“出口”处设置行为。
+下面函数记录进入函数入口和出口的时间与两者的差值。
+{% highlight ruby %}
+func bigSlowOperation() {
+
+  defer trace("bigSlowOperation")()
+
+  time.Sleep(5 * time.Second)
+
+}
+func trace(msg string) func() {
+  start := time.Now()
+  log.Printf("enter %s", msg)
+  return func() {
+    log.Printf("exit %s (%s)", msg, time.Since(start))
+  }
+}
+{% endhighlight %}
+
+延迟执行的匿名函数能够改变外层函数的返回值结果给调用者
+{% highlight ruby %}
+func double(x int) (result int) {
+  defer func() { fmt.Printf("double(%d)=%d\n", x, result) }()
+  return x + x
+}
+
+func triple(x int) (result int) {
+  defer func() { result += x }()
+  return double(x)
+}
+  fmt.Println(triple(3))  9
+
+{% endhighlight %}
+
+
+错误的例子
+{% highlight ruby %}
+可能会用尽所有的文件描述符
+  for _, filename := range filenames {
+    f, err := os.Open(filename)
+    if err != nil {
+      return err 
+    }
+    defer f.Close()
+  }
+  
+  
+ 正确的姿势
+   for _, filename := range filenames {
+    
+    if err := doFile(filename); err != nil {
+      return err
+    }
+  }
+func doFile(filename string) error  {
+  f, err := os.Open(filename)
+  if err != nil {
+    return err
+  }
+  defer f.Close()
+
+}
+{% endhighlight %}
+
+### 宕机
+一个典型宕机发生时，程序会终止，goroutine 中所有 defer 会执行，每个 goroutine 都会在宕机时候显示一个函数调用的栈跟踪消息。
+{% highlight ruby %}
+可以直接调用内置的宕机函数，它接受任何值作为参数。不可能发生情况，是宕机最好的用法。
+{% endhighlight %}
+
+{% highlight ruby %}
+  a := 1
+  switch a {
+  case 1:
+  default:
+    panic(fmt.Sprintf("invalid number %d", a))
+  }
+{% endhighlight %}
+
+{% highlight ruby %}
+func main() {
+  defer printStack()
+  f(3)
+}
+
+
+func f(x int) {
+  fmt.Printf("f(%d)\n", x+0/x)
+  defer fmt.Printf("defer %d\n", x)
+  f(x - 1)
+}
+
+
+func printStack() {
+  var buf [4096]byte
+  n := runtime.Stack(buf[:], false)
+  os.Stdout.Write(buf[:n])
+}
+
+Output
+f(3)
+f(2)
+f(1)
+defer 1
+defer 2
+defer 3
+
+栈信息
+main.f(0x2)
+        /panic.go:28 +0xf6
+main.f(0x3)
+        /panic.go:28 +0xf6
+main.main()
+        /panic.go:20 +0x45
+{% endhighlight %}
+宕机机制让延迟执行函数在栈清理之前调用
+
+### 恢复
+* 如果内置的 recover 函数在 defer 函数内部调用，且这个包含 defer 语句的函数发生了宕机，recover 会终止当前宕机状态并返回宕机值。
+函数不会从之前宕机的地方继续运行而是正常返回。
+* 如果 recover 在其他情况下运行则它没有任何效果并且返回 nil
+{% highlight ruby %}
+func Parse(input string) (err error) {
+  defer func() {
+    if p := recover(); p != nil {
+      err = fmt.Errorf("internal error: %v", p)
+    }
+    panic("11")
+
+  }()
+  return nil
+}
+{% endhighlight %}
+
+同一个包内发生的宕机进行恢复有助于简化处理复杂和未知的错误，但一般原则是你不应该尝试去恢复从另一个包内发生的宕机。
+公共 API 应该直接报告错误，比如调用者提供的回调，因为这样做不确定是否安全。
+
+最安全的做法还是要选择性的使用 recover，毕竟宕机后需要进行恢复的情况本来就不多。

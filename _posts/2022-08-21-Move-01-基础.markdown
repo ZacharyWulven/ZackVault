@@ -1,0 +1,389 @@
+---
+layout: post
+title: Move-01-基础
+date: 2022-08-21 16:45:30.000000000 +09:00
+tag: 区块链
+---
+
+## 为什么选择 Move
+1. 面向资源编程
+2. 原生态避免双花
+* 属主与资源是绑定关系，资产转移后，资源与原属主就断开了，所以可以原生态避免双花
+3. 安全和形式化验证
+
+## Move 的结构
+包含 Modules 和 Scripts 两部分
+
+### Modules 模块
+* 可以结构化定义
+* 函数功能
+* 全局存储（状态树）
+
+### Scripts 脚本
+* 可以引用 Modules，调用 Modules 的函数
+* 暂时的代码片段
+* 1 个 Scripts 内只能有一个函数
+* 负责去调用
+
+{% highlight ruby %}
+
+script {
+    // Debug 放在某个 module 下，而 module 跟地址有关系， 0x1 地址发布的 Debug 库
+    // import other module
+    use 0x1::Debug; 
+
+    // Move 不支持字符串类型，只支持 Number，布尔、address 类型
+
+    // main func just a name，叫什么名都行
+    // Note：script 里的函数没有返回值，但 Module 里函数可以有返回值
+    fun main() {
+        // u64 是数值类型
+        let num:u64 = 1024;
+        Debug::print(&num);
+    }
+
+}
+{% endhighlight %}
+
+https://playground.pontem.network/ 的结构分三个部分
+
+![](/assets/images/move/hello.png)
+
+* scripts：脚本就放这里，放其他俩地方会找不到函数
+* sources 
+* tests
+
+
+Run Script：把 script 中的函数名比如 main() 输入然后回车
+
+{% highlight ruby %}
+https://playground.pontem.network/
+写中文的注释会报编译错误😅
+{% endhighlight %}
+
+## Move 数据类型
+
+### 整型
+* u8
+* u64
+* u128
+
+### 布尔
+* true
+* false
+
+### 地址 address
+* address 是 Move 的地址类型，它与 Solidity 中的 address 类型没有关系，作用也不太一样，Solidity 的 address 就是用户身份
+* Std、0x1 Sender 等都是 address 类型，地址可以命名方式比如 Sender，也可是数组的比如 0x1
+* 命名地址也会对应一个数值，有一个映射关系
+
+![](/assets/images/move/addr.png)
+
+* 编译时候会把命名的地址替换成对应的数值传递给编译器，（有点像宏定义）
+
+## Move 变量定义的 4 中方式
+1. 类型推导&赋值
+* let a = 10; 类型推导为整型
+
+2. 显示定义&赋值
+* let b:u64 = 11; 
+
+3. 值+类型表示
+* let c = 1u128; 类型是 u128，值是 1
+
+4. 先定义后赋值
+* let d:u8; d = 13;
+
+{% highlight ruby %}
+script {
+    // import other module
+    use 0x1::Debug; 
+
+    // main func just a name
+    fun main() {
+        let num:u64 = 1024;
+        Debug::print(&num);
+
+        let b:u8 = 13;
+        Debug::print(&b);
+
+        let c = 1024u64;
+        Debug::print(&c);
+
+        let d = true;
+        Debug::print(&d);
+
+    }
+}
+{% endhighlight %}
+
+
+## 函数
+* 格式：[public] fun func_name(par) : ReturnType { }
+1. 参数类型后置，可以 0 或多个参数
+2. 返回值可以是 0 或多个，如果多个返回值需要用 ()
+3. public 表示公开，无 public 表示只能内部访问，仅限于 module 内部访问
+4. func_name Move 官方推荐单词用下划线分割
+
+{% highlight ruby %}
+// Viper 是命名地址
+// Math 是 module 的名字
+module Viper::Math {
+    public fun sum(a: u64, b: u64): u64 {
+        // 没有分号，语法可以直接写返回值的表达式，或 return a + b
+        a + b
+//        return a + b
+    }
+
+}
+
+script {
+    use Viper::Math;
+    use 0x1::Debug;
+
+    fun mainSum(a: u64, b: u64) {
+        let c = Math::sum(a, b);
+        Debug::print(&c);
+    }
+}
+{% endhighlight %}
+
+## as 两种用法
+### 1. 类型转换
+{% highlight ruby %}
+    public fun sum_2(a: u64, b: u8): u64 {
+    // 因为 + 号优先级比 as 高，所以这里转换需要加个括号
+        a + (b as u64)
+//        return a + b
+    }
+{% endhighlight %}
+
+### 2. 别名
+* use Viper::Math as MM;
+* 用 as 别名后就不能用原来的 module 名了
+{% highlight ruby %}
+script {
+    use 0x1::Debug;
+    use Viper::Math as MM;
+
+    fun test_sum(a: u64, b: u64) {
+
+        let c = MM::sum(a, b);
+        Debug::print(&c);
+
+
+        let d:u8 = 10;
+
+        let e = MM::sum_2(a, d);
+        Debug::print(&e);
+
+    }
+
+}
+{% endhighlight %}
+
+## if
+{% highlight ruby %}
+    public fun max(a:u64, b:u64) :u64 {
+        if (a >= b) {
+            a
+        } else {
+            b
+        }
+    }
+{% endhighlight %}
+
+## 循环
+{% highlight ruby %}
+    public fun sum_to_a(a: u64) :u64 {
+        let i:u64 = 1;
+        let sum:u64 = 0;
+        while(i <= a) {
+            sum = sum + i;
+            i = i + 1;
+        };  // Note：这里注意要有个 ; 🤣
+        sum
+    }
+    
+    // continue 使用
+    public fun sum_99() :u64 {
+        let i:u64 = 0;
+        let sum:u64 = 0;
+
+        while(i <= 99) {
+            i = i + 1;
+            if (i % 2 == 0) {
+                continue;
+            };
+            sum = sum + i;
+        };
+        sum
+    }
+{% endhighlight %}
+
+## 作用域与生命周期
+
+### 全局变量
+* const
+* module 内或 script 内
+* 常量定义必须大写开头，首字母 A~Z
+* 定义全局常量可以，全局变量不行
+
+### 局部变量
+* let 关键字
+* 函数内
+* 首字母 a~z
+
+![](/assets/images/move/scope.png)
+
+
+{% highlight ruby %}
+    fun test_sum_100(a: u64) {
+        Debug::print(&MM::sum_to_a(a));
+        Debug::print(&MM::sum_99());
+
+        let r:u64 = 10;
+        let area = MM::get_area(r);
+        Debug::print(&area);
+        // Note：地址类型放到表达式里就需要用 @
+
+        let addr:address = @Viper;
+        Debug::print(&addr);
+    }   
+{% endhighlight %}
+
+## abort 和 asset
+### abort 
+* 一个关键字
+* 用法：abort 0
+* 作用是：终止执行，恢复事务
+
+{% highlight ruby %}
+if (r < 10) {
+    abort 10;
+}; 别忘了这该死的 ; 🤣
+
+输出：Execution aborted with code 10 in transaction script
+{% endhighlight %}
+
+
+### assert
+* 调用：assert!(cond, code)，cond 为假，就会执行 code
+* 宏定义，封装了 abort 的使用，内部就是调用了 abort
+
+{% highlight ruby %}
+assert!(r >= 10, 10);
+
+输出：Execution aborted with code 10 in transaction script
+{% endhighlight %}
+
+## 元组
+* 使用小括号组合多个变量或值，例如 (x,y), (10,20,30)
+* 函数多个返回值的定义与接收
+* 多个变量的同时定义
+
+* Move 中变量支持重复定义，会使用最新的
+{% highlight ruby %}
+let (x, y) = (10, 19);
+let (x, y) = (20, 30);
+
+let (m, _) = (1, 2); // _ 占位
+
+{% endhighlight %}
+
+## 引用
+* 通过引用定义变量的别名
+* 引用可以避免直接暴露地址
+
+* Move 的两种引用方式
+1. 不可变引用 &
+2. 可变引用 &mut
+3. \* 代表解除引用，指向引用对应的值；左值用于赋值需要 &mut；右值用于读取
+
+{% highlight ruby %}
+let (x, y) = (20, 30);
+
+// m 引用 x 
+let m:&u64 = &x;
+Debug::print(m); // 20
+{% endhighlight %}
+
+### swap
+{% highlight ruby %}
+// &mut
+public fun swap(a:&mut u64, b:&mut u64) {
+    let temp = *a;
+    *a = *b;
+    *b = temp;
+}
+
+let a:u64 = 10;
+let b:u64 = 20;
+
+MM::swap(&mut a, &mut b);
+Debug::print(&a);
+Debug::print(&b);
+
+{% endhighlight %}
+
+## 泛型 Generics
+* 代码逻辑与类型无关
+* 泛型允许程序员在强类型程序设计语言中编写代码时使用一些以后才指定的类型，在实例化时作为参数指明这些类型
+
+{% highlight ruby %}
+// 泛型需要声明有 drop 的能力
+public fun show<T:drop>(x:T) {
+    Debug::print(&x);
+}
+
+MM::show(a);
+{% endhighlight %}
+
+## Vector
+* Vector Move 提供的泛型容器
+
+{% highlight ruby %}
+use 0x1::Vector;
+
+// a array of string's ASCII
+let str = b"hello";
+// [104, 101, 108, 108, 111]
+Debug::print(&str);
+
+let v2 = Vector::empty<u64>();
+
+// add 10 to v2 list
+Vector::push_back(&mut v2, 10);
+Vector::push_back(&mut v2, 20);
+// [10, 20]
+Debug::print(&v2);
+{% endhighlight %}
+
+
+### Vector 常用 API
+
+* 终止是指调用这个方法是否会有 abort 操作
+
+![](/assets/images/move/vector1.png)
+
+![](/assets/images/move/vector2.png)
+
+![](/assets/images/move/vector3.png)
+
+{% highlight ruby %}
+let v3 = Vector::empty<u64>();
+Vector::push_back(&mut v3, 30);
+Vector::push_back(&mut v3, 40);
+Vector::push_back(&mut v3, 50);
+
+Vector::append<u64>(&mut v2, v3);
+Debug::print(&v2);
+
+Vector::reverse<u64>(&mut v2);
+Debug::print(&v2);
+
+let x = 10;
+let (flag, index) = Vector::index_of<u64>(&v2, &x);
+Debug::print(&flag);
+Debug::print(&index);
+{% endhighlight %}

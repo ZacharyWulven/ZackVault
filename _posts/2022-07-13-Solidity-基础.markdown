@@ -1,0 +1,609 @@
+---
+layout: post
+title: Solidity-基础
+date: 2022-07-13 16:45:30.000000000 +09:00
+tag: Solidity
+---
+
+
+## Solidity 初识
+Solidity 是一个面向对象的语言
+
+{% highlight ruby %}
+pragma solidity^0.6.0 // 编译器版本，向 0.6.x 兼容的 
+// 也可以写成 pragma solidity >=0.7.0 <0.9.0 即编译器版本在 0.7.0~0.9.0
+
+// hello 为合约名字
+contract hello {
+    // 定义状态变量，将会存放在以太坊世界状态树中，全球计算机都会为你保存该变量
+    string hellomsg; // 思考：存放在哪里？
+
+    constructor(string memory _msg) public {
+        hellomsg = _msg;
+    }
+
+    // 设置消息
+    function setMsg(string memory _msg) public {
+        hellomsg = _msg;
+    }
+
+    // 获取消息
+    function getMsg() public view returns (string memory) {
+        return hellomsg;
+    }
+}
+{% endhighlight %}
+* hellomsg 叫状态变量，以太坊中有个世界状态树，世界状态树存放世界状态，而 hellomsg 就是最终存放在世界状态树里
+* constructor 构造函数（部署时候被执行），对于 string 或数组编译器都会让加上 memory
+* public 即函数的访问权限
+* 0xd9145CCE52D386f254917e481eB44e9943F39138 合约地址，和普通账户地址一样，都是 address 类型数据
+* Deploy 即调用构造函数
+* gas = gas cost * gas price 
+
+
+### DEPLOY & RUN TRANSACTIONS 
+1. JavaScript VM 即 浏览器内置虚拟机环境
+2. Web3 Provider 部署到节点，如果自己本机跑个节点，那么账户能看到
+
+
+### 启动一个 geth 本地节点用于测试
+* 可以 geth 本地启动一个节点（操作见之前的文章）
+* 选择 External http Provider，一般是本机 8545 端口，如果节点已启动连接不上 Remix 看下是否用了代理😂
+* 部署 hello 合约，如果出现账户被锁 authentication needed: password or unlock
+* 需要解锁 personal.unlockAccount(acc1)，需要输入密码
+* 这时再部署，发现会变慢，是因为要等待挖矿，以太坊一般是 10 几秒
+
+
+## Solidity 数据类型
+* string 字符序列，使用 UTF-8 编码
+* bool 布尔类型，true、false
+* int 有符号整数，由于智能合约考虑存储，一个字节就是一个类型，有 int8，int16 等
+* uint 无符号整数，不能表示负数
+* address 地址，用来表示账户或智能合约，可以用来转账，例如 0xd9145CCE52D386f254917e481eB44e9943F39138
+
+{% highlight ruby %}
+pragma solidity^0.6.0;
+
+contract simpleDataType {
+    // 定义状态变量
+    // public 类型的变量自动提供查询方法
+    string public name;
+    uint8 public age;
+    string public job;
+    int256 salary;
+
+
+    // 字节类型 bytes32 是哈希值返回结果
+    bytes32 public personHash;
+
+    // 构造函数
+    constructor(string memory _name, uint8 _age, string memory _job, int256 _salary) public {
+        name = _name;
+        age = _age;
+        job = _job;
+        salary = _salary;
+        
+        // keccak256 以太坊的哈希计算函数
+        // 之前版本可以传多个参数，升级后只能传一个参数，这时我们需要使用 abi.encode 编码进行编码
+        // 0x8f1646852a221db355f721f1a6bf3010f0c3cc9d897b19fe178fd0d93d93b8a2
+        personHash = keccak256(abi.encode(name, age, job, salary));
+    }
+
+    function getSalary() public view returns (int256) {
+        return salary;
+    }
+}
+{% endhighlight %}
+* public 类型的变量自动提供查询方法
+
+
+## 内建对象 block
+* block.coinbase (address): 当前块的矿工的地址
+* block.difficulty (uint): 当前块的难度系数
+* block.gaslimit (uint):当前块 gas 的上限
+* block.number (uint): 当前块编号
+* block.blockhash (function (uint) returns (bytes32)): 函数，返回指定块的哈希值，已经被内建函数 blockhash 替代
+* block.timestamp (uint): 当前块的时间戳，等同于 now，即系统当前时间，秒数
+
+## 内建对象 msg（比 block 还重要）
+Remix 里的运行时的值就是 msg 的信息，比如 account 是哪个账户执行的即 msg.sender
+* msg.data (bytes): 完整的 calldata，即 msg 的全部信息
+* msg.gas (uint): 剩余的 gas 量
+* msg.sender (address): 消息发送方（即调用者），这个很重要
+* msg.sig (bytes4): calldata 的前 4 个字节（即函数标识符），每个函数取前 4 个字节都可以拿到一个函数标识
+* msg.value (uint): 所发送的消息中 wei（以太坊激励体系内最小的虚拟数字货币单位）的数量，就是真金白银，这个比较重要
+
+## 计算随机数 Demo
+{% highlight ruby %}
+pragma solidity^0.6.0;
+
+contract random_demo {
+    function getRandom() public view returns (uint256) {
+        // 计算一个100以内的随机数
+        // 根据哈希防碰撞的特性，输入不同，产生不同输出，就是随机值
+        // now 当前时间
+        bytes32 hash = keccak256(abi.encode(now, msg.sender, block.number, "salt"));
+        
+        return uint256(hash) % 100;
+    }
+}
+{% endhighlight %}
+
+
+## 函数
+### 格式
+function funcName(paramlist...) modifiers returns (returnlist...)
+
+* function 是函数声明关键字
+* funcName 自定义函数名称，与我们习惯的函数命名规范没有区别
+* paramlist 即参数列表：可以 0 个或多个，格式是 参数类型 参数名称
+* modifiers 函数的修饰符，非常关键，比如 public、view 都是修饰符
+* returns 返回值关键字，可返回多个返回值
+* returnlist 返回值类型列表
+
+
+### 例子 1+2+3...+100
+{% highlight ruby %}
+pragma solidity^0.6.0;
+
+contract function_deom {
+    // 计算 1+2+3...+100=5050
+    // 返回值定义名字 result 
+    function getSum() public pure returns (uint256 result) {
+        uint256 sum = 0; // 临时变量
+        uint256 i = 0;
+        // init; cond; post
+        for (i = 1; i < 101; i++) {
+
+            sum += i;
+
+        }
+        // 定义返回值名称可不写 return
+        result = sum;
+      //  return sum;
+    }
+
+    // 比较两个字符串是否相等
+    function isEqualToString(string memory a, string memory b) public pure returns (bool, bytes32) {
+
+        bytes32 hashSpace = keccak256(abi.encode(""));
+
+        // solidity 中没有对 == 运算符进行重载
+        // 思路：借助 hash 函数，如果 hash(a) == hash(b) ===> a == b
+        bytes32 hashA = keccak256(abi.encode(a));
+        bytes32 hashB = keccak256(abi.encode(b));
+
+        bytes32 memory hashAA = bytes(a)
+        bytes32 memory hashBB = bytes(b)
+
+
+        // if (hashA == hashSpace || hashB == hashSpace) {
+        //     return false;
+        // }
+
+        
+        return hashA == hashB;
+    }
+}
+
+    // 通过 length 解决空输入相等问题
+    // 比较两个字符串是否相等
+    function isEqualToString(string memory a, string memory b) public pure returns (bool) {
+        // 可以先计算字符串长度，如果长度为 0 则不允许计算
+
+
+        // hashA 实际是一个数组, 通过 bytes 把字符串转成数组
+        bytes memory hashA = bytes(a);
+        bytes memory hashB = bytes(b);
+
+        if (hashA.length == 0 || hashB.length == 0) {
+            return false;
+        }
+        bytes32 hashAA = keccak256(hashA);
+        bytes32 hashBB = keccak256(hashB);
+
+
+        
+        return hashAA == hashBB;
+    }
+{% endhighlight %}
+* solidity 中没有对运算符进行重载
+
+## 函数修饰符
+
+修饰符|意义| 分类
+public|任何人可以调用该函数，权限最大，内部外部都可调用，与 private 互斥|调用控制类
+private|只有该合约才能调用（only 内部调用），与 public 互斥|调用控制类
+external|外部函数；内部不能访问，外部正常访问，“子类可继承”，定义接口时用|调用控制类
+internal|内部函数；内部正常访问，外部无法访问，“子类可继承”|调用控制类
+constant|合约不修改状态变量，和 view 一样，过期了用 view 替代|状态变量访问控制类
+view|合约不修改状态变量，与 constant 一样|状态变量访问控制类
+pure|合约即不修改也不读取状态变量|状态变量访问控制类
+payable|涉及以太币转移，可修饰函数和 address|资金控制类
+自定义修饰符|支持自定义修饰符，跟数据库事务控制有关，涉及 require、assert|自定义控制类
+
+
+* public、private 是一组
+* external、internal 是一组
+* view、constant、pure 是一组
+
+
+
+修饰符 Demo
+
+{% highlight ruby %}
+pragma solidity^0.6.0;
+
+contract modifiers_demo {
+    // 演示三种不同演示的函数
+    uint256 totalAmount;
+    
+    constructor() public {
+        totalAmount = 0;
+    }
+
+    // 红颜色的函数：带 payable
+    // 消耗 gas + eth
+    function payamount() public payable {
+        totalAmount -= 10;
+
+    }
+
+    // 橘红色的函数: 修改状态变量的函数
+    // 只消耗 gas
+    function setAmount(uint256 amount) public {
+        totalAmount = amount;
+    }
+
+    // 蓝色的函数：带 view、pure 是蓝色的
+    // 无消耗
+    function getAmount() public view returns (uint256) {
+        return totalAmount;
+    }
+}
+{% endhighlight %}
+
+
+## 充值与提现
+1. 充值
+* 函数 + payable
+* 关键：msg.value 大于 0
+
+2. 提现
+* 地址 + payable
+* address.transfer(uint256 amount)
+* 或使用 address.send
+
+{% highlight ruby %}
+pragma solidity^0.6.0;
+
+contract deposit_demo {
+    address owner;
+
+    constructor() public {
+        owner = msg.sender; // msg.sender 代表调用者
+    }
+
+    // 充值
+    function deposit() public payable {
+
+    }
+
+    // 提现
+    function withdraw(uint256 amount) public payable {
+        // 方式一
+        // 推荐使用 transfer，transfer 比 send 消耗的 gas 更少
+        msg.sender.transfer(amount);
+        
+        // 方式二
+         msg.sender.send(amount);
+
+    }
+
+    // 查询合约余额
+    // this 可以理解为是本合约
+    // address(this) 合约强转为 address 对象
+    // address 内部属性 balance，获取账户余额
+    function getBalance() public view returns (uint256) {
+        return address(this).balance;
+    }
+}
+{% endhighlight %}
+
+## 复合类型
+* T[N] 定长数组，length 表示数量
+* T[]  动态数组，length 表示数量， push 推入
+* struct 结构体
+* mapping(T1 => T2) 映射表
+* bytesN 字节数组
+
+### 数组
+* 数组即存储相同类型元素，元素在内存是连续存放的
+* 通过 push 添加元素，一般不删除，因为删除了那个对象还是会占用那个索引位置
+* 若真想删除可以将最后一个元素替换掉想删除的 index，然后再把最后一个元素删掉
+{% highlight ruby %}
+pragma solidity^0.6.0;
+pragma experimental ABIEncoderV2;
+
+contract array_demo {
+    string[3] names; // 定长数组
+    uint256[] ages;  // 动态数组
+    
+    constructor() public {
+        names[0] = "tom"; // 对数组的访问，就是[下标]，注意不要越界
+        names[1] = "Jack";
+
+        // ages[0] = 10; 动态数组不允许访问不存在的下标
+        ages.push(10); // 通过 push 添加元素
+        ages[0] = 20;  // 下标 0 有元素后才可访问
+    }
+
+    function setNames(string memory name, uint256 index) public {
+        names[index] = name;
+    }
+
+    function setAges(uint256 age) public {
+        ages.push(age);
+    }
+
+    function getLength() public view returns (uint256, uint256) {
+        return (names.length, ages.length);
+    }
+
+    // 编译报错不推荐这么写，加上 pragma experimental ABIEncoderV2; 可编译通过
+    function getAllNames() public view returns (string[3] memory) {
+        return names;
+    }
+}
+{% endhighlight %}
+
+### struct
+{% highlight ruby %}
+pragma solidity^0.6.0;
+pragma experimental ABIEncoderV2;
+
+
+// 定义结构，0.6 后结构定义可以放在合约外了， 
+struct Person {
+    string name;
+    uint8 age;
+    bool isMan;
+    uint256 salary;
+}
+
+contract struct_demo {
+    Person[] persons;
+    // 构造 person 对象
+
+    constructor() public {
+
+    }
+
+    function addPerson(string memory name_, uint8 age_, bool man_, uint256 salary_) public {
+        Person memory p = Person(name_, age_, man_, salary_);
+        persons.push(p);
+    }
+
+    function findPerson(uint256 index) public view returns (Person memory) {
+        return persons[index];
+    }
+
+    function setAge(uint256 index, uint8 a) public {
+         Person memory p = persons[index]; 
+         p.age = a;  // 修改无效
+
+    }
+
+    function setAge2(uint256 index, uint8 a) public {
+        persons[index].age = a; // 修改有效
+
+    }
+
+    function setAge3(uint256 index, uint8 a) public {
+        /*  Note
+            本地变量就两种选择 memory 或 storage
+            memory 相当于值传递，值拷贝，拷贝后得到的对象与原对象没有一点关系
+            storage 相当于引用传递，指针赋值，赋值后得到的对象会影响原对象
+        */
+         Person storage p = persons[index]; // 修改有效
+         p.age = a;
+
+    }
+}
+
+{% endhighlight %}
+
+### mapping
+通过 key-value 进行存储
+{% highlight ruby %}
+pragma solidity^0.6.0;
+pragma experimental ABIEncoderV2;
+
+// 学生结构
+struct Student {
+    string name;
+    string sex;
+    uint8 age;
+
+}
+
+contract mapping_demo {
+    // 学生编号作为 key，指向学生信息
+    mapping(uint256=>Student) students;
+    uint256 count;
+
+    constructor() public {
+        count = 0;
+    }
+
+    function addStudent(string memory n, string memory s, uint8 a) public {
+        Student memory stu = Student(n, s, a);
+        // mapping 的访问或修改 都是通过 key
+        students[0] = stu;
+    }
+
+
+    function getStudent(uint256 index) public view returns (Student memory) {
+        // 如果 key 对应的 value 没有，会找不到，不会像数组越界
+        return students[index];
+    }
+}
+{% endhighlight %}
+
+## 断言和错误处理
+要么全成功，要么全失败
+
+* 断言和错误处理发生时：退回初始状态
+* assert：比较残暴，扣光 gas
+1. 用于内部变量判断
+2. 用于 pure 函数
+3. 用于检测系统错误
+* require：退还剩余 gas，用于判断业务逻辑
+
+适合 asset 的情况：
+* 用于内部变量判断
+* 用于 pure 函数
+* 用于检测系统错误
+
+{% highlight ruby %}
+pragma solidity^0.6.0;
+
+contract require_deom {
+    uint256 count;
+
+    constructor() public {
+        count = 30;
+    }
+
+    function setCount(uint256 c) public {
+        // assert(cond) 如果条件不成立，则报错并且扣光 gas, 状态回退
+        count = 25;
+        assert(c > count);
+     //   count = c;
+    }
+
+    function setCount2(uint256 c) public {
+        // require(cond), 如果条件不成立，则报错并退出
+        count = 26;
+        require(c > count, "c must bigger than count");
+        count = c;
+    }
+
+    function getCount() public view returns (uint256) {
+        return count;
+    }
+}
+{% endhighlight %}
+
+## 自定义修饰符
+自定义修饰符用于将多个条件组合在一起，重复利用
+
+{% highlight ruby %}
+格式
+modifier modifier_name(参数,可不传) {
+  require(cond, "cond error text");  // 条件，可以有多个条件
+  ...
+  _; 占位符号，标识 modifier 的结束
+}
+{% endhighlight %}
+
+用法：函数声明用过 modifier_name，函数执行前会先执行 modifier_name 的条件
+
+{% highlight ruby %}
+pragma solidity^0.6.0;
+
+contract only_admin_demo {
+    address admin; // 管理员
+    uint256 count;
+    constructor(address owner) public {
+        admin = owner;
+        count = 30;
+    }
+
+    // 自定义修饰符
+    modifier onlyOwner() {  
+        require(msg.sender == admin, "only admin can do it!");
+        _; // 占位符
+    }
+    // 声明函数时候加上 onlyOwner 修饰符，只有管理员可以改 count
+    function setCount(uint256 c) public onlyOwner { 
+        count = c;
+    }
+
+    function getCount() public view returns (uint256) {
+        return count;
+    }
+}
+{% endhighlight %}
+
+### 其他例子
+* Note 带  msg.value 和 transfer 需要  payable
+{% highlight ruby %}
+// 去调警告
+// SPDX-License-Identifier:Apache-2.0
+pragma solidity^0.8.7;
+
+// deposit  withdraw.  transfer
+// 账本记录 
+contract bank {
+
+    address owner;
+    // 储户很多人 无法定义变量
+    
+    mapping(address=>uint256) _balances; // 储户账本
+    string public bankName;
+    uint256 public totalAmount;
+
+    constructor(string memory _name) {
+        owner = msg.sender;
+        bankName = _name;
+    }
+    // 存款 取款 转账
+    function deposit(uint256 _amount) public payable {
+        require(_amount > 0, "amount must > 0");
+
+        require(msg.value == _amount, "amount not equal value");
+
+        _balances[msg.sender] += _amount;
+
+        totalAmount += _amount;
+        // 合约账号的钱 address(this).balance
+        require(totalAmount == address(this).balance);
+
+
+
+    }
+        // 带  msg.value 和 transfer 需要  payable
+
+    function withdraw(uint256 _amount) public payable {
+        require(_amount > 0, "amount must > 0");
+        require(_balances[msg.sender] >= _amount, "user's balance not enough");
+
+        _balances[msg.sender] -= _amount;
+        payable(msg.sender).transfer(_amount);
+        totalAmount -= _amount;
+        require(totalAmount == address(this).balance);
+    
+    }
+
+    function transfer(address to, uint256 _amount) public  {
+        // require 解决事务问题
+        require(_amount > 0, "amount must > 0");
+        require(_balances[msg.sender] >= _amount, "user's balance not enough");
+        // 地址是否有效
+        require(address(0) != to, "to is invalid");
+        
+        _balances[to] += _amount;
+        _balances[msg.sender] -= _amount;
+        require(totalAmount == address(this).balance);
+
+    }
+
+    function getBalance(address _who) public view returns (uint256) {
+        return _balances[_who];
+    }
+}
+{% endhighlight %}
+
+### msg.sender VS tx.origin
+公链上推荐使用 msg.sender，因为 tx.origin 表示最初的调用者，容易被攻击者利用

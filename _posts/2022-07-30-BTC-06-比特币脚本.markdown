@@ -1,0 +1,221 @@
+---
+layout: post
+title: BTC-06-比特币脚本
+date: 2022-07-30 16:45:30.000000000 +09:00
+tag: 区块链
+---
+
+## 0x01 比特币脚本
+
+![](/assets/images/btc/tx_ins.png)
+
+这个交易有一个输入两个输出
+* 左边的输入其实是之前交易的输出
+* 这交易已经有了 23 个确认所以回滚的可能性很小
+* 比特币脚本就是基于堆栈，只能访问堆栈，没有全局变量，动态空间等，
+
+
+### 交易的结构 metadata
+![](/assets/images/btc/tx_struct.png)
+
+* txid：transaction id
+* hash：交易的 hash
+* version：使用比特币版本号
+* size：交易的大小
+* locktime 指用于设定交易的生效时间，0 表示立即生效，大部分交易都是 0，不是 0 即需要等一段时间
+* vin  输入部分
+* vout 输出部分
+* blockhash：区块 hash
+* confirmations：有多少节点确认
+* time：交易产生的时间
+* blocktime：区块产生的世界
+
+### 交易的输入
+![](/assets/images/btc/tx_input.png)
+
+* 是一个数组
+* txid：是之前那个交易
+* vout：是txid 那个交易第几个输出
+* scriptSig：输入脚本，最简单的形式就是给个签名就行，证明你有权花这个钱
+* 如果有多个输入，那么要给出多个交易信息和签名
+
+### 交易的输出
+![](/assets/images/btc/tx_output.png)
+
+value：转的钱金额，单位是 BTC，也有的使用”聪“为单位
+n：是序号，即这个交易的第几个输出
+scriptPubKey：输出脚本，最简单形式就是给一个 Public Key
+reqSigs：说明需要多个签名才能兑现
+type：输出类型
+address：输出地址
+
+### 脚本执行
+![](/assets/images/btc/script.png)
+
+* B->C 输入脚本 与 A->B 的输出脚本拼在一起执行，早期比特币版本这俩脚本是品在一起执行的
+* 后来出于安全考虑，两个脚本分别执行，先执行 input script 如没有出错就执行 output script，如果没有出错并最后栈顶为非零（即 true）
+即验证通过，这个交易就是合法的，否则非法
+* 如果交易有多个输入，则每个输入都需要与输出进行匹配认证，每个都通过才说明是合法的
+
+
+### 脚本几种形式
+### 1 P2PK（Pay to Public Key）
+* input script：PUSHDATA(Sig) 给出签名，用私钥对整个交易签名
+* output script:
+1. PUSHDATA(PubKey) 给出收款人的公钥
+2. CHECKSIG  检测签名
+
+执行流程
+1. PUSHDATA(Sig)     将签名压入栈
+2. PUSHDATA(PubKey)  将公钥压入栈
+3. CHECKSIG          用公钥检测签名是否正确
+
+![](/assets/images/btc/script1.png)
+
+
+### 2 P2PKH（Pay to Public Key Hash）（最常用）
+* input script：
+1. PUSHDATA(Sig) 给出签名，用私钥对整个交易签名
+2. PUSHDATA(PubKey) 给出收款人的公钥
+* output script:
+1. DUP      用于验证签名的正确性
+2. HASH160  用于验证签名的正确性
+3. PUSHDATA(PubKeyHash) 区别与 P2PK 这里是给出收款人的公钥 hash
+4. EQUALVERIFY
+5. CHECKSIG  检测签名
+
+执行流程
+1. PUSHDATA(Sig) 把签名压入栈
+2. PUSHDATA(PubKey) 把公钥压入栈
+1. DUP      把栈顶元素复制一次，所以栈顶又多了一个公钥
+2. HASH160  弹出栈顶取 hash，然后把得到的 hash 再压入栈，所以栈顶变成了公钥的 hash
+3. PUSHDATA(PubKeyHash) 把输出脚本提供的公钥 hash 入栈
+4. EQUALVERIFY      弹出栈顶两个元素，进行比较，如果相同说明是合法的，将从栈顶移除
+5. CHECKSIG         检测签名
+
+![](/assets/images/btc/script2.png)
+
+
+### 3 P2PSH（Pay to Scrip Hash）（最复杂）采用 BIP16 方案
+* redeemScript 叫赎回脚本，
+1. PUSHDATA(PubKey) 公钥
+2. CHECKSIG
+
+形式有
+1. P2PK 形式
+2. P2PKH 形式
+3. 多重签名形式
+
+* input script：
+1. ...
+3. PUSHDATA(Sig) 给出签名能让 redeemScript 正常运行的签名
+4. PUSHDATA(serialized redeemScript) 序列化的赎回脚本
+5. ...
+
+* output script:
+HASH160
+PUSHDATA(redeemScriptHash) 收款人提供的脚本 hash
+EQUAL
+
+
+
+input script 验证两步：当两步验证都通过说明交易合法
+1. 验证 input script redeemScript 是否与 output script redeemScriptHash 匹配
+2. 反序列化并执行 redeemScript 验证 input script 中的签名是否正确
+
+执行流程：用 P2PSH 实现 P2PK
+* Step 1
+1. PUSHDATA(Sig) 签名入栈
+2. PUSHDATA(serialized redeemScript) 序列化的赎回脚本 入栈
+3. HASH160 得到赎回脚本的 hash
+4. PUSHDATA(RSH)  赎回脚本的 hash
+5. EQUAL
+* Step 2
+1. 将赎回脚本反序列化
+2. 执行赎回脚本 PUSHDATA(PubKey)
+3. CHECKSIG
+
+P2PSH 的应用场景是对多重签名的支持
+
+### 多重签名
+场景：需要 5 个中 3 个签名才能把钱取出
+
+早期的多重签名实现
+![](/assets/images/btc/mul_sig.png)
+
+* CHECKMULTISIG 就是多重签名检查
+* 上边红色 x，比特币 CHECKMULTISIG 有 bug，执行时会多弹出一个元素，已经无法改了，代价很大，要改需要硬分叉，
+实际解决方案是在输入时多压入栈一个无用的元素，这个 x 就是无用的元素
+* 签名相对顺序与公钥顺序要一样
+
+
+这样复杂度给了用户，用 P2PSH 实现多签，将复杂转给输入脚本，是收款人提供的，而不是用户（类似是包了一层转嫁给电商公司）
+
+即电商公司，在网上公布赎回脚本的 hash值，用户把这个 hash 值包含在输出脚本里就行了，至于电商公司要求的赎回脚本要几个签名，
+用户可以不关心，这样把公钥 hash 值换成了赎回脚本的 hash，如果将来电商的赎回脚本变了，改下赎回脚本 hash 再公布出去就好
+
+执行流程
+1. FALSE 即迁就 bug 的无用元素
+2. PUSHDATA(Sig_1)
+3. PUSHDATA(Sig_2)
+4. PUSHDATA(seriRS)  序列化的赎回脚本入栈
+5. HASH160
+6. PUSHDATA(RSH)     赎回脚本 hash 入栈
+7. EQUAL             比较栈顶两个 hash
+8. 2                 需要的签名数量
+9. PUSHDATA(pubkey_1)   所有公钥之一
+10. PUSHDATA(pubkey_2)   所有公钥之一
+11. PUSHDATA(pubkey_3)   所有公钥之一
+12. 3                总共的签名数量
+13. CHECKMULTISIG    检查多签
+
+现在多重签名都是使用 P2PSH 
+
+
+### 4 Proof of Burn 
+![](/assets/images/btc/pob.png)
+
+* output script 以 RETURN 开头，RETURN 后边可跟任意内容，RETURN 操作是无条件返回错误，所以包含 RETURN 的脚本永远无法通过验证，
+执行到 RETURN 就会出错，后边的也不会执行了
+* 这种脚本是证明销毁比特币的一种方法
+
+应用场景
+1. 除 BTC 外的小币种叫 AltCoin(Alternative Coin) ，有些小币种需要销毁一定的 BTC 才能获得
+2. 往区块链里写一些内容，写一些永久保存的内容，
+* 如 digital commitment
+* 知识产权的内容，将其 hash 放在 RETURN 后，保存知识产权的 hash 以便以后使用
+
+#### 那为什么不用 coinbase transaction 里的 coinbase 阈，来保存知识产权的 hash ？
+* 因为 coinbase 阈 只有获得记账权的节点才能使用，Proof of Burn 所有的节点或用户都可以使用
+
+{% highlight ruby %}
+发布交易不需要有记账权，发布区块才需要有记账权
+{% endhighlight %}
+
+通过 Proof of Burn 任何节点或用户都可以往区块链里写入内容
+
+#### 例子 1
+![](/assets/images/btc/ex1.png)
+
+第二个 output 金额是 0，就是 RETURN 那种 output
+
+#### 例子 2
+![](/assets/images/btc/ex2.png)
+
+这是个转账交易，output 金额是 0， 说明输入金额全部用于交易费了
+这个交易并没有销毁 BTC，只不过把输入的 BTC 作为交易费转给了挖到矿的矿工
+
+
+{% highlight ruby %}
+包含 REUTRN 的 output 交易矿工不会把它保存在 UTXO 里，这样对全节点比较友好
+{% endhighlight %}
+
+比特币脚本看上去简单，但对比特币应用场景做了很好的优化
+
+{% highlight ruby %}
+本例的图为例简单都去掉了 OP_ 前缀，比如正常应该是 OP_CHECKSIG
+{% endhighlight %}
+
+### 既然 REUTRN 会抛出错误，那怎么还能写入区块链中呢？
+* 因为 REUTRN 是写在 output script 中，验证脚本时候不会执行它，
+* 什么时候会执行 REUTRN？后边再有交易要花 REUTRN 里这笔钱时，才会验证

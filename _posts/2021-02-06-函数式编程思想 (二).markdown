@@ -1,0 +1,171 @@
+---
+layout: post
+title: 函数式编程思想 (二)
+date: 2021-02-07 23:14:30.00000000 +09:00
+categories: [函数式编程]
+tags: [函数式编程]
+---
+
+### 权责让渡
+
+函数式思维的好处之一，是能够将底层次细节（如垃圾机制）的控制权移交给运行时，从而消除一大批注定会发生的程序错误。
+下面将讲述向语言和运行时让渡控制权的五各种途径。
+
+#### 一、迭代让位于高阶函数
+
+用 map 等函数替换了迭代。用高阶函数的操作表达出来，语言将会把操作安排得更高效。
+{% highlight ruby %}
+理解掌握的抽象层次永远要比日常使用的抽象层次更深一层
+{% endhighlight %}
+
+#### 二、闭包 closure
+
+闭包是所有函数式语言都具备的一项平等特性。所谓闭包实际上是一种特殊的函数，它在暗地里绑定了函数内部引用的所有变量。
+换句话说，这种函数把它引用的所有东西都放在一个上下文里“包”了起来。
+
+闭包这个名字来源于创建封闭上下文的行为。虽然局部变量不是在代码块里定义的，但是只要代码块引用了改变量，两者就绑定在一起了，
+这个联系在代码块实例的全生命周期都一直保持。
+
+{% highlight ruby %}
+func makeAdd() -> (() -> Int) {
+var x = 0;
+func add() -> Int {
+x += 1
+return x
+}
+return add
+}
+var c1 = makeAdd()
+c1()
+c1()
+var c2 = makeAdd()
+c2()
+c1 is 3
+c2 is 2
+{% endhighlight %}
+
+闭包还是推迟执行原则的绝佳样板。我们把代码绑定到闭包之后，可以推迟到适当的时机再执行闭包。
+
+{% highlight ruby %}
+抓住上下文，而非状态。
+{% endhighlight %}
+
+### 三、柯里化和函数的部分施用
+
+柯里化 （currying） 和函数的部分（partial application）施用都是从数学里借用过来的编程语言技法。这两种技法以不同的面面出现在各种类型的语法里，
+在函数式语言里尤为普遍。
+
+柯里化和函数的部分施用都有能力操纵函数或方法的参数数目，一般是通过向一部分参数代入一个或多个默认值的办法来实现的。
+{% highlight ruby %}
+这部分参数称为 “固定参数”。
+{% endhighlight %}
+
+定义与辨析
+
+柯里化是指从一个多参数函数变成一个连串单参数函数的变换。它描述的是变换的过程，不涉及变换后对函数的调用。
+调用者可以决定对多少个参数实施变换，余下部分将衍生位一个参数数目较少的新函数。
+
+部分施用指通过提前代入一部分参数值，使一个多参数得以省略部分参数，从而转换为一个参数数目较少的新函数。
+顾名思义，也就是让函数先作用域其中一些参数，经过部分的求解，结果返回一个由余下参数构成签名的函数。
+
+{% highlight ruby %}
+def volume = { h, w, l -> h _ w _ l }
+def area = volume.curry(1)
+def lengthPA = volume.curry(1, 1) 部分施用
+def lengthC = volume.curry(1).curry(1) 柯里化
+{% endhighlight %}
+
+柯里化和部分施用都是在我们提供部分参数值后，产出可以凭借余下参数实施调用的一个函数。
+区别在于：
+{% highlight ruby %}
+柯里化的结果是返回链条中的下一个函数。
+部分施用是把参数的取值绑定到用户在操作中提供的具体值上。而产生一个“元数（参数数目）”较少的函数。
+{% endhighlight %}
+
+函数式编程赋予我们另一套新的构造单元。
+{% highlight ruby %}
+复合（composition）是函数式语言拼组这些构造单元的一般方式。
+{% endhighlight %}
+
+### 四、递归
+
+递归，按照维基百科的定义，是 “以一种自相似的方式来重复事物的过程”。
+
+在 C 或类 C 语言出身的开发者的头脑中，列表概念通常会被塑造成一个带索引的集合。
+但对于诸多函数式语言来说，它们眼中的列表形象有些不一样。
+{% highlight ruby %}
+他们看到的不是再索引的格子，而是看成由列表的第一个元素（叫做头部）和列表的其余元素（叫做尾部）这两部分组成。
+把列表想象成头部和尾部组合，有利于使用递归方式来组织迭代。
+{% endhighlight %}
+
+[1, 2, 3, 4, 5, 6], 1 则是头部，2 3 4 5 6 则是尾部
+
+{% highlight ruby %}
+func filter(list: [Int], condition: (Int) -> Bool) -> [Int] {
+var array = [Int]()
+for item in list {
+if condition(item) {
+array.append(item)
+}
+}
+return array
+}
+
+func isEven(number: Int) -> Bool {
+return number % 2 == 0
+}
+
+var nums = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+filter(list: nums, condition: isEven)
+
+func filterFunctional(list: [Int], condition: (Int) -> Bool) -> [Int] {
+if list.isEmpty {
+return list
+}
+let subList = Array(list[1..<list.endIndex]) as Array<Int>
+if condition(list.first!) {
+return [] + [list.first!] + filter(list: subList, condition: isEven)
+} else {
+return filter(list: subList, condition: isEven)
+}
+}
+
+filterFunctional(list: nums, condition: isEven)
+{% endhighlight %}
+
+在 filter 命令式写法中是“我”在管理状态，“我”必须创建一个 array 的列表，“我”负责向新列表中添加元素，“我”负责在筛选后返回列表。
+而在递归写法中，是语言在管理返回值，它从递归栈中收集每次调用的返回结果，构造出最终结果。
+
+{% highlight ruby %}
+利用递归，把状态的管理责任推给运行时。
+{% endhighlight %}
+
+#### 尾调用优化 （tail-call optimization）
+
+递归没有成为一种平常的操作，其中一个主要原因是栈的增长。递归操作一般的实现都是把中间结果放在栈里，于是没有为递归专门优化的语言就会遇到栈溢出的问题。
+
+开发者也可以在这个问题上出一点力，使用尾调用优化的写法来帮助运行时克服栈增长的问题。
+{% highlight ruby %}
+当递归调用是函数执行的最后一个调用的时候，运行时往往可以在栈里就地更新，而不需要增加新的栈空间。
+{% endhighlight %}
+
+### 五、Stream 和作业顺序重排
+
+stream 很多方面与集合相似，但它不像集合那样事先就备妥所有的值，而是需要的时候才让数据从源头“流”向目的地。
+{% highlight ruby %}
+func cleanOdd(list: [String]) -> Int {
+guard !list.isEmpty else {
+return 0
+}
+return list.map { Int($0)! }.filter { $0 & 1 != 1 }.reduce(0) { (result, x) -> Int in result + x }
+}
+
+var stringList = ["1", "2", "3", "4", "5", "6", "7", "8", "9"]
+{% endhighlight %}
+
+上边代码 map 和 filter 都是缓求值（lazy）的操作，它们会被尽量地推迟执行。实际在下游的终结操作“发出要求”前，它们都不会产生任何结果。
+
+我们必须保证传给 filter 等函数块不存在副作用，否则可能导致无法预料的结果。
+{% highlight ruby %}
+允许运行时发挥其优化能力，交出控制权，放弃对繁琐细节掌控，关注问题域，而非关注问题域的实现很重要。
+{% endhighlight %}

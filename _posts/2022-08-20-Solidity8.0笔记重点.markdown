@@ -1,0 +1,680 @@
+---
+layout: post
+title: Solidity8.0 笔记重点
+date: 2022-08-20 16:45:30.000000000 +09:00
+tag: 区块链
+---
+
+## 函数签名
+{% highlight ruby %}
+
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.3;
+
+函数签名也叫函数选择器, 用来代表合约中虚拟机是如何找到一个函数的
+
+call 一个函数的数据由两部分组成：函数选择器（函数签名）+ 参数
+Note：函数签名即函数的名称+函数参数类型打包在一起进行 hash，然后取 hash 值前 4 字节，即 8 个 16 进制数
+
+
+/*
+ 调用 transfer 函数，传入地址和 123，查看 event 的信息   
+0xa9059cbb
+0000000000000000000000005b38da6a701c568545dcfcb03fcb875f56beddc4
+000000000000000000000000000000000000000000000000000000000000000b
+
+
+0xa9059cbb // 4 字节 即 函数签名
+参数一：即 address
+0000000000000000000000005b38da6a701c568545dcfcb03fcb875f56beddc4
+
+
+参数二：即 uint，我们输入的是 11 转成 16 进制就是 b
+000000000000000000000000000000000000000000000000000000000000000b
+
+
+
+结论：在智能合约虚拟机中调用一个函数时候通过选择器取区分函数，所以意味着可以出现同名函数，
+只有它的参数类型不同，名称是可以相同的
+
+类似 OC 的方法签名即 函数名+参数类型
+*/
+
+/*
+    调用 getSelector 方法传入 "transfer(address,uint256)"
+    得到 bytes4 值是 0xa9059cbb
+*/
+contract FunctionSelector {
+
+    function getSelector(string calldata _func) external pure returns (bytes4) {
+        return bytes4(keccak256(bytes(_func)));
+    }
+
+}
+ 
+contract Reveiver {
+    event Log(bytes data);
+    function transfer(address _to, uint _amount) external {
+        emit Log(msg.data);
+    }
+}
+{% endhighlight %}
+
+
+## Create2 部署合约
+* Create2 是用工厂合约地址加上盐来计算新合约的地址
+* 通过 Create2 可以提前计算出合约地址
+
+{% highlight ruby %}
+
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.3;
+
+/*
+    测试步骤
+    1 deploy Create2Factory
+    2 调用 Create2Factory 的 getBytecode 方法
+    使用用户地址 0x5B38Da6a701c568545dCfcB03FcB875f56beddC4
+    bytecode = 0x000000000000000000000000000000000000000000000000000000000000
+    0040000000000000000000000000000000000000000000000000000000000000028000000
+    0000000000000000000000000000000000000000000000000000000020d60806040523480
+    1561001057600080fd5b5060405161020d38038061020d833981810160405281019061003
+    2919061008d565b806000806101000a81548173ffffffffffffffffffffffffffffffffff
+    ffffff021916908373ffffffffffffffffffffffffffffffffffffffff160217905550506
+    10108565b600081519050610087816100f1565b92915050565b6000602082840312156100
+    a3576100a26100ec565b5b60006100b184828501610078565b91505092915050565b60006
+    100c5826100cc565b9050919050565b600073ffffffffffffffffffffffffffffffffffff
+    ffff82169050919050565b600080fd5b6100fa816100ba565b811461010557600080fd5b5
+    0565b60f7806101166000396000f3fe6080604052348015600f57600080fd5b5060043610
+    60285760003560e01c80638da5cb5b14602d575b600080fd5b60336047565b604051603e9
+    1906078565b60405180910390f35b60008054906101000a900473ffffffffffffffffffff
+    ffffffffffffffffffff1681565b6072816091565b82525050565b6000602082019050608
+    b6000830184606b565b92915050565b6000609a8260a1565b9050919050565b600073ffff
+    ffffffffffffffffffffffffffffffffffff8216905091905056fea264697066735822122
+    0fcd5a012573938f79eeb7cec9ae2283b9a90dc168a454e6f64f871d96e8d6bfa64736f6c
+    6343000807003300000000000000000000000000000000000000000000000000000000000
+    00000000000000000000000000000000000000000200000000000000000000000005b38da
+    6a701c568545dcfcb03fcb875f56beddc4
+
+    3 调用 getAddress 传入 bytecode 和 salt 比如 798
+    新合约地址
+    addr = 0xA2f05Aef500Ed8B90dFb8DC73bCfDa4356e71d13
+    
+    4 调用 Deploy 合约地址应该和 0xA2f05Aef500Ed8B90dFb8DC73bCfDa4356e71d13 一样
+
+*/
+
+contract DeployWithCreate2 {
+
+    address public owner;
+
+    constructor(address _owner) {
+        owner = _owner;
+    }
+
+}
+
+// 所以一个盐对应一个合约地址，除非合约由自毁功能，自毁后再用相同的盐部署
+// 只有盐是可以变的其他参数都是固定的
+contract Create2Factory {
+
+    event Deploy(address addr);
+
+    // 部署合约地址
+    function deploy(uint _salt) external {
+
+        DeployWithCreate2 _contract = new DeployWithCreate2{
+            salt: bytes32(_salt)
+        }(msg.sender);
+
+        emit Deploy(address(_contract));
+
+    }
+    
+    function getAddress(bytes memory bytecode, uint _salt) 
+    public 
+    view 
+    returns (address addr) 
+    {
+        // 打包 4 个参数
+        // 0xff 固定的
+        // bytecode 就是未来部署在链上的机器码
+        bytes32 hash = keccak256(
+            abi.encodePacked(
+                bytes1(0xff), address(this), _salt, keccak256(bytecode)
+            )
+        );
+        // 160 格式就是地址的格式
+        addr = address(uint160(uint(hash))); 
+
+    } 
+    
+    function getBytecode(address _owner) public pure returns (bytes memory) {
+        bytes memory bytecode = type(DeployWithCreate2).creationCode;
+        return abi.encodePacked(bytecode, abi.encode(_owner));
+    }
+
+}
+{% endhighlight %}
+
+## Multi Call 
+Multi Call 可以把对一个或多个合约多次函数调用打包整合在一个交易中，对合约在进行调用，
+这样好处是有时我们需要在一个前端页面对合约进行几十次调用，而一个链的 RPC 节点又限制了每一个客户端
+对链的调用在 20 秒间隔内只能够调用一次，通过这种方式可以通过一次调用把想要的数据都读取出来
+
+{% highlight ruby %}
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.3;
+
+contract TestMultiCall {
+    function func1() external view returns (uint, uint) {
+        return (1, block.timestamp);
+    }
+
+    function func2() external view returns (uint, uint) {
+        return (2, block.timestamp);
+    }
+
+    // 获取 函数调用时的传入参数，或通过 ethers 或 web3 sdk 工具获取
+    function getData1() external pure returns (bytes memory) {
+        // 等价于 abi.encodeWithSignature("func1()")
+        return abi.encodeWithSelector(this.func1.selector);
+    }
+    function getData2() external pure returns (bytes memory) {
+        // 等价于 abi.encodeWithSignature("func2()")
+        return abi.encodeWithSelector(this.func2.selector);
+    }
+
+}
+
+/*
+调用 multiCall 结果
+0x0000000000000000000000000000000000000000000000000000000000000001
+00000000000000000000000000000000000000000000000000000000631eeaf5,
+0x0000000000000000000000000000000000000000000000000000000000000002
+00000000000000000000000000000000000000000000000000000000631eeaf5
+
+*/
+
+contract MultiCall {
+    // 参数一：调用合约的地址，如果同一个合约那么输入相同的地址
+    // 参数二：调用合约的方法的签名，比如 getData1()
+    function multiCall(address[] calldata targets, bytes[] calldata data)
+    external
+    view 
+    returns (bytes[] memory)
+    {
+        require(targets.length == data.length, "targets.length != data.length");
+
+        bytes[] memory results = new bytes[](data.length);
+
+        for (uint i; i < targets.length; i++) {
+            // 静态调用，而不是底层 call
+            // 底层 call 有可能有动态写入操作，
+            // 我们这个方法声明的是 view, 表示都是静态调用
+            // .staticcall(data[i]) 静态调用
+            (bool success, bytes memory result) = targets[i].staticcall(data[i]);
+            require(success, "call failed");
+            results[i] = result;
+        }
+        return results;
+    }
+
+
+}
+{% endhighlight %}
+
+## 多重委托调用
+{% highlight ruby %}
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.3;
+
+// Note 委托调用合约不能单独存在
+// 委托调用合约只能调用自身合约
+contract MultiDelegateCall {
+    error DelegateCallFailed();
+
+    function multiDelegateCall(bytes[] calldata data) 
+    external 
+    payable 
+    returns (bytes[] memory results)
+    {   
+        results = new bytes[](data.length);
+
+        for (uint i; i < data.length; i++) {
+            (bool ok, bytes memory res) = address(this).delegatecall(data[i]);
+            if (!ok) {
+                revert DelegateCallFailed();
+            }
+
+            results[i] = res;
+        } 
+    }
+
+}
+
+// alice -> multi call --- call ---> test (msg.sender == multi call)
+// alice -> test --- delegate call --> test (msg.sender == alice)
+contract TestMultiDelegateCall is MultiDelegateCall {
+    event Log(address caller, string func, uint i);
+
+    function func1(uint x, uint y) external {
+        emit Log(msg.sender, "func1", x + y);
+    }
+
+    function func2() external returns (uint) {
+        emit Log(msg.sender, "func2", 2);
+        return 111;
+    }
+
+    mapping(address => uint) public balanceOf;
+
+    /*
+    issue
+    多重委托合约可能会对 mint 方法造成漏洞 mint
+    比如发送 1 eth，调用三次，即调用 multiDelegateCall 时候传入数组是三个 mint 的 selector
+    这时余额是 3 eth，但我们只发送了 1 eth
+
+    所以在使用多重委托调用时，要注意合约逻辑中不要重复计算主币，
+    或让多重委托调用不能接收主币，也是一种解决方案
+    */
+    function mint() external payable {
+        balanceOf[msg.sender] += msg.value;
+    }
+
+}
+
+// 助手合约用于获取 func1 func2 的 data
+contract Helper {
+
+    function getFunc1Data(uint x, uint y) external pure returns (bytes memory) {
+        return abi.encodeWithSelector(TestMultiDelegateCall.func1.selector, x, y);
+    }
+
+    function getFunc2Data() external pure returns (bytes memory) {
+        return abi.encodeWithSelector(TestMultiDelegateCall.func2.selector);
+    }
+
+    function getMintData() external pure returns (bytes memory) {
+        return abi.encodeWithSelector(TestMultiDelegateCall.mint.selector);
+    }
+
+}
+
+/*
+    测试步骤
+    1 部署 TestMultiDelegateCall 和 Helper
+    2 调用 getFunc1Data 和 getFunc2Data
+    getFunc1Data：
+    0x3cb80085
+    000000000000000000000000000000000000000000000000000000000000000a
+    0000000000000000000000000000000000000000000000000000000000000014
+
+    getFunc2Data：
+    0xb1ade4db
+
+    3 调用 TestMultiDelegateCall 的 multiDelegateCall
+    然后查看 event log
+    能看到 msg.sender == 0x5B38Da6a701c568545dCfcB03FcB875f56beddC4
+    也就是默认的部署账户用户，即调用成功
+
+    
+    总结：
+    多重委托调用必须只能调用合约自身，
+    可以把多重委托调用合约制作成一个抽象合约，
+    然后被自己的合约继承
+*/
+{% endhighlight %}
+
+## ABI 解码
+{% highlight ruby %}
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.3;
+
+
+contract AbiDecode {
+
+    struct MyStruct {
+        string name;
+        uint[2] nums;
+    }
+
+    /*
+     encode 参数
+     arr [2,3,5]
+     myStruct ["Salt", [1,3]]
+    */
+    function encode(
+        uint x, 
+        address addr, 
+        uint[] calldata arr,
+        MyStruct calldata myStruct
+    ) external pure returns (bytes memory) {
+        return abi.encode(x, addr, arr, myStruct);
+    }
+    // 解码返回编码前所有参数
+    // 解码后 MyStruct： tuple(string,uint256[2]): myStruct ,1,3，
+    // MyStruct 的 string 在 remix 无法显示,可通过 ethers 等工具查看
+
+    function decode(bytes calldata data) external pure returns (
+        uint x, 
+        address addr, 
+        uint[] memory arr,
+        MyStruct memory myStruct) 
+    {
+        // 解码用 () 把参数包起来
+        (x, addr, arr, myStruct) = abi.decode(data, (uint, address, uint[], MyStruct));
+
+    }
+
+}
+{% endhighlight %}
+
+
+## Gas 优化
+{% highlight ruby %}
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.3;
+
+contract GasGolf {
+
+    // start - 50632
+    // 1 input params use calldata from memory, - 48803
+    // 2 load state var to memory, 减少写状态变量次数， - 31492
+    // 3 short circuit 短路 - 31196
+    // 4 i++ to ++i - 31144
+    // 5 cache arr len 
+    // 6 load array elements to memory -31013
+
+    uint public total;
+
+
+    // [1, 2, 3, 4, 5, 100]
+    //function sumIfEvenAndLessThan99(uint[] memory nums) external {
+    function sumIfEvenAndLessThan99(uint[] calldata nums) external {
+        for (uint i; i < nums.length; i++) {
+            bool isEven = nums[i] % 2 == 0;
+            bool isLessThan99 = nums[i] < 99;
+            if (isEven && isLessThan99) {
+                total += nums[i];
+            }
+        }
+    }
+
+    function sumIfEvenAndLessThan99_2(uint[] calldata nums) external {
+        // 2 load state var to memory
+        uint _total = total; 
+        for (uint i; i < nums.length; i++) {
+            bool isEven = nums[i] % 2 == 0;
+            bool isLessThan99 = nums[i] < 99;
+            if (isEven && isLessThan99) {
+                _total += nums[i];
+            }
+        }
+        total = _total;
+    }
+
+    function sumIfEvenAndLessThan99_3(uint[] calldata nums) external {
+        // 2 load state var to memory
+        uint _total = total; 
+        for (uint i; i < nums.length; i++) {
+            // 3 short circuit 短路
+            if (nums[i] % 2 == 0 && nums[i] < 99) {
+                _total += nums[i];
+            }
+        }
+        total = _total;
+    }
+
+    // [1, 2, 3, 4, 5, 100]
+    function sumIfEvenAndLessThan99_4(uint[] calldata nums) external {
+        // 2 load state var to memory
+        uint _total = total;
+        for (uint i; i < nums.length; ++i) {
+            // 3 short circuit 短路
+            if (nums[i] % 2 == 0 && nums[i] < 99) {
+                _total += nums[i];
+            }
+        }
+        total = _total;
+    }
+
+    // [1, 2, 3, 4, 5, 100]
+    function sumIfEvenAndLessThan99_5(uint[] calldata nums) external {
+        // 2 load state var to memory
+        uint _total = total;
+        uint len = nums.length;
+        for (uint i; i < len; ++i) {
+            // 3 short circuit 短路
+            if (nums[i] % 2 == 0 && nums[i] < 99) {
+                _total += nums[i];
+            }
+        }
+        total = _total;
+    }
+
+        // [1, 2, 3, 4, 5, 100]
+    function sumIfEvenAndLessThan99_6(uint[] calldata nums) external {
+        // 2 load state var to memory
+        uint _total = total;
+        uint len = nums.length;
+        // 4 ++i
+        for (uint i; i < len; ++i) {
+            // 6 
+            uint num = nums[i];
+            // 3 short circuit 短路
+            if (num % 2 == 0 && num < 99) {
+                _total += num;
+            }
+        }
+        total = _total;
+    }
+}
+{% endhighlight %}
+
+## 时间锁合约 TimeLock
+{% highlight ruby %}
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.3;
+
+/*
+时间锁合约用于保护管理员权限
+
+如果你需要针对一个合约进行重要操作，比如放到队列中等待 48 小时或更长时间，那么就能在队列中看到
+如果有不好的行为，可以让我们及时取消任务
+
+
+测试
+1 先部署 TimeLock 合约
+2 再部署 TestTimeLock 合约，传入 TimeLock 地址
+3 时间锁合约调用 测试合约的方法
+
+*/
+// 时间锁合约
+contract TimeLock {
+    
+    error NotOwnerError();
+    error AlreadyInQueueError(bytes32 txId);
+    error TimestampNotInRangeError(uint blockTimestamp, uint timestamp);
+    error NotInQueuedError(bytes32);
+    error TimestampNotPassedError(uint blockTimestamp, uint timestamp);
+    error TimestampExpiredError(uint blockTimestamp, uint expiredAt);
+    error TxFailedError();
+
+    event Queue(
+        bytes32 indexed txId,
+        address indexed target,
+        uint value,    
+        string func, 
+        bytes data,  
+        uint timestamp  
+    );
+
+    event Execute(
+        bytes32 indexed txId,
+        address indexed target,
+        uint value,    
+        string func, 
+        bytes data,  
+        uint timestamp  
+    );
+
+    event Cancel(bytes32 indexed txId);
+
+    // 最小延迟为 10 秒
+    uint public constant MIN_DELAY = 10;
+    uint public constant MAX_DELAY = 1000;
+    uint public constant GRACE_PERIOD = 1000;
+
+    address public owner;
+    // txId 是否存在
+    mapping(bytes32 => bool) public queued;
+
+    modifier onlyOwner() {
+        if (msg.sender != owner) {
+            revert NotOwnerError();
+        }
+        _;
+    }
+
+    constructor() {
+        owner = msg.sender;
+    }
+
+    receive() external payable {}
+
+    function getTxId(
+        address _target,
+        uint _value,    
+        string calldata _func, 
+        bytes calldata _data,  
+        uint _timestamp     
+    ) public pure returns (bytes32 txId)
+    {
+        txId = keccak256(abi.encode(_target, _value, _func, _data, _timestamp));
+    }
+
+    function queue(
+        address _target, // 参数一：目标合约地址
+        uint _value,     // 参数二：是一个数值
+        string calldata _func, // 参数三：就是我们想执行的方法名称
+        bytes calldata _data,  // 参数四：就是我们想执行的方法数据
+        uint _timestamp      // 参数五：时间戳, 交易将要执行的时间
+        ) external onlyOwner
+    {
+        // create tx id
+        bytes32 txId = getTxId(_target, _value, _func, _data, _timestamp);
+
+        // check tx id unique
+        if (queued[txId]) {
+            revert AlreadyInQueueError(txId);
+        }
+
+        // check timestamp
+        if (_timestamp < block.timestamp + MIN_DELAY || 
+            _timestamp > block.timestamp + MAX_DELAY) {
+                revert TimestampNotInRangeError(block.timestamp, _timestamp);
+        }
+
+        // save tx to queue
+        queued[txId] = true;
+
+        emit Queue(txId, _target, _value, _func, _data, _timestamp);
+    }
+
+    function execute(
+        address _target,
+        uint _value,    
+        string calldata _func, 
+        bytes calldata _data,  
+        uint _timestamp  
+    ) external payable onlyOwner returns (bytes memory result)  
+    {
+        bytes32 txId = getTxId(_target, _value, _func, _data, _timestamp);
+        // check tx is queued
+        if (!queued[txId]) {
+            revert NotInQueuedError(txId);
+        }
+
+        // check block.timestamp > _timestamp
+        if (block.timestamp < _timestamp) {
+            revert TimestampNotPassedError(block.timestamp, _timestamp);
+        }
+        // 交易超时后有一个宽限期，如果在宽限期内还是可以执行的
+        // 如果当前时间超过了执行时间 + 款型期 则不可执行
+        if (block.timestamp > _timestamp + GRACE_PERIOD) {
+            revert TimestampExpiredError(block.timestamp, _timestamp + GRACE_PERIOD);
+        }
+
+        // delete tx from queue
+        queued[txId] = false;
+
+        // execute the tx
+        bytes memory data;
+        // 如果函数名称长度大于 0 说明调用的是方法，而不是回退函数
+        if (bytes(_func).length > 0) {
+            // 把函数名称编码成 bytes4 的 哈希值
+            data = abi.encodePacked(
+                bytes4(keccak256(bytes(_func))), _data
+            );
+        } else {
+            data = _data;
+        }
+
+        (bool ok, bytes memory res) =  _target.call{value: _value}(data);
+        if (!ok) {
+            revert TxFailedError();
+        }
+
+        emit Execute(txId, _target, _value, _func, _data, _timestamp);
+
+        result = res;
+    }
+
+    // 当发现队列中交易不该执行，则可以取消
+    function cancel(bytes32 _txId) external onlyOwner {
+        if (!queued[_txId]) {
+            revert NotInQueuedError(_txId);
+        }
+        queued[_txId] = false;
+
+        emit Cancel(_txId);
+    }
+
+    function getTimestamp() external view returns (uint) {
+        return block.timestamp;
+    }
+
+}
+
+contract TestTimeLock {
+    address public timeLock;
+
+    event Test(address indexed sender);
+
+    constructor(address _timeLock) {
+        timeLock = _timeLock;
+    }
+
+    function test() external {
+        // 确认调用者为时间锁合约
+        require(msg.sender == timeLock, "not timeLock");
+        /*
+        之后用户把想要执行的任务推到时间锁合约的队列中，时间到达后
+        调用 execute 方法去执行, 因为把操作给时间锁合约，所以任何
+        操作都需要等时间锁解禁后才能执行
+        */
+
+        emit Test(msg.sender);
+
+    }
+
+}
+{% endhighlight %}
+
+
+
+
+{% highlight ruby %}
+
+{% endhighlight %}

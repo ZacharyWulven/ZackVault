@@ -1,0 +1,1372 @@
+---
+layout: post
+title: Swift-Doc-04
+date: 2022-09-15 16:45:30.000000000 +09:00
+tag: Swift
+---
+
+## 0x01 Concurrency
+{% highlight ruby %}
+/*
+ Swift 内置支持编写异步和并行代码。
+ 异步代码可以在以后被挂起和恢复，尽管一次只执行一段程序。
+ 挂起和恢复能让程序在短期内继续执行，就像通过网络获取数据或解析文件同时更新 UI。
+ 并行代码意味着多段代码同时运行——例如，具有四核处理器的计算机可以同时运行四段代码，
+ 每个核执行一项任务。
+ 使用并行和异步代码的程序一次执行多个操作；它挂起正在等待外部系统的操作，并使以内存安全的方式编写此代码更容易。
+ 
+
+ 并行或异步代码的额外调度灵活性也伴随着复杂性增加的成本。
+ Swift 允许您以一种启用一些编译时检查的方式表达您的意图——例如，您可以使用 actors 安全地访问可变状态。但是，将并发性添加到缓慢或错误的代码中并不能保证它会变得快速或正确。事实上，添加并发性甚至可能使您的代码更难调试。
+ 但是，在需要并发的代码中使用 Swift 对并发的语言级支持意味着 Swift 可以帮助您在编译时发现问题
+ 
+ 
+ **** 重要
+ 如果您以前编写过并发代码，您可能习惯于使用线程。
+ Swift 中的并发建立在线程最上层的线程，但你并不直接与它们交互。
+ Swift 中的异步函数可以放弃它正在运行的线程，让另一个异步函数在该线程上运行，
+ 而第一个函数被阻塞。
+ 当第一个函数恢复时，Swift 不保证该函数将在哪个线程上运行。
+ */
+
+// ## 1 Defining and Calling Asynchronous Functions
+/*
+ 异步函数或异步方法是一种特殊的函数或方法，可以在执行过程中被挂起。
+ 这与普通的同步函数和方法形成对比，后者要么运行完成，要么抛出错误，要么永远不会返回。
+ 异步函数或方法仍然执行这三件事之一，但它也可以在中途暂停当等待某事时。
+ 在异步函数或方法的主体中，您标记了可以暂停执行的每个位置。
+ 
+ 语法：
+ 为了表明一个函数或方法是异步的，你在它的参数之后的声明中写了 async 关键字，类似于你如何使用 throws 来标记一个抛出函数。 如果函数或方法返回值，则在返回箭头 (->) 之前编写 async。
+ */
+
+func listPhotos(inGallery name: String) async -> [String] {
+    let result = // ... some asynchronous networking code ...
+    return result
+}
+
+
+/*
+ 对于既异步又抛出的函数或方法，async 写在 throw 前边
+ 
+ ****调用异步方法时，执行会暂停，直到该方法返回。
+ 您在调用前写 await 以标记暂停点。即等待返回
+ 这就像在调用抛出函数时编写 try，以标记如果出现错误，程序流程可能发生的变化。
+ 
+ 在异步方法内部，只有在调用另一个异步方法时才会暂停执行流程——暂停永远不会是隐式的或抢占式的——*****这意味着每个可能的暂停点都用 await 标记
+
+
+ */
+
+let photoNames = await listPhotos(inGallery: "Summer Vacation")
+let sortedNames = photoNames.sorted()
+let name = sortedNames[0]
+let photo = await downloadPhoto(named: name)
+show(photo)
+
+/*
+ **** 重要 重要 重要
+ 代码中标有 await 的暂停点表示当前代码段可能暂停执行同时等待异步函数或方法返回。
+ 这也称为产生线程的原因，
+ 在幕后 Swift 会暂停当前线程上代码的执行，并在该线程上运行一些其他代码。 因为带有 await 的代码能够暂停执行，所以程序中只有某些地方可以调用异步函数或方法：
+    1 异步函数、方法或属性主体内部的代码。
+    2 用 @main 标记的结构、类或枚举的静态 main() 方法中的代码。
+    3 非结构化子任务中的代码
+
+ **** 可能的挂起点之间的代码按顺序依次运行，不会被其他并发代码中断。
+ 
+ 
+ */
+let firstPhoto = await listPhotos(inGallery: "Summer Vacation")[0]
+add(firstPhoto toGallery: "Road Trip")
+// At this point, firstPhoto is temporarily in both galleries.
+remove(firstPhoto fromGallery: "Summer Vacation")
+
+
+func move(_ photoName: String, from source: String, to destination: String) {
+    add(photoName, to: destination)
+    remove(photoName, from: source)
+}
+// ...
+let firstPhoto = await listPhotos(inGallery: "Summer Vacation")[0]
+move(firstPhoto, from: "Summer Vacation", to: "Road Trip")
+
+/*
+ The Task.sleep(until:tolerance:clock:) method is useful when writing simple code to learn how concurrency works. This method does nothing, but waits at least the given number of nanoseconds before it returns. Here’s a version of the listPhotos(inGallery:) function that uses sleep(until:tolerance:clock:) to simulate waiting for a network operation:
+ */
+func listPhotos(inGallery name: String) async throws -> [String] {
+    try await Task.sleep(until: .now + .seconds(2), clock: .continuous)
+    return ["IMG001", "IMG99", "IMG0404"]
+}
+
+
+// ## Asynchronous Sequences
+/*
+ 上一节中的 listPhotos(inGallery:) 函数在数组的所有元素都准备好之后，
+ 一次异步返回整个数组。
+ 另一种方法是使用异步序列一次等待集合的一个元素。 以下是对异步序列的迭代：
+ 
+ 相比普通的 for-in loop，下边例子使用 for-await-in loop，
+ 就像当你调用异步函数或方法，写 await 指示一个可能的挂起点
+ for-await-in loop 现在挂起在每次遍历的开始，等待下一个元素可用
+ 
+ **** 你可以在 for-in loop 使用你自己遵循了 Sequence protocol 的类型
+ 你可以在 for-await-in loop 使用你自己遵循了 AsyncSequence protocol 的类型
+ */
+
+
+let handle = FileHandle.standardInput
+for try await line in handle.bytes.lines {
+    print(line)
+}
+
+// ## 3 Calling Asynchronous Functions in Parallel
+// 并行调用异步函数
+/*
+ 使用 await 调用异步函数一次只运行一段代码。 在异步代码运行时，调用者会等待该代码完成，然后再继续运行下一行代码。 例如，要从图库中获取前三张照片，您可以等待对 downloadPhoto(named:) 函数的三个调用，如下所示：
+ */
+let firstPhoto = await downloadPhoto(named: photoNames[0])
+let secondPhoto = await downloadPhoto(named: photoNames[1])
+let thirdPhoto = await downloadPhoto(named: photoNames[2])
+
+let photos = [firstPhoto, secondPhoto, thirdPhoto]
+show(photos)
+
+/*
+ 这种方法有一个重要的缺点：虽然下载是异步的，并且在下载过程中允许其他工作发生，但一次只运行一次对 downloadPhoto(named:) 的调用。 在下一张开始下载之前，每张照片都会完全下载。 但是，这些操作无需等待——每张照片都可以独立下载，甚至可以同时下载。
+ 
+ ***** 使用 async 在 let 前可以进行并发
+ 
+ **** 使用 await 标记暂停点，以指示执行将暂停（如果需要），直到异步函数返回。
+ */
+
+// 同时进行三个图片下载
+// 类似 gcd_group enter
+async let firstPhoto = downloadPhoto(named: photoNames[0])
+async let secondPhoto = downloadPhoto(named: photoNames[1])
+async let thirdPhoto = downloadPhoto(named: photoNames[2])
+
+// 类似 gcd_notify
+let photos = await [firstPhoto, secondPhoto, thirdPhoto]
+show(photos)
+
+
+// ## 4 Tasks and Task Groups
+/*
+ task 是可以作为程序的一部分异步运行的工作单元。
+ 所有异步代码都可作为某个任务的一部分运行。
+ 上一节中描述的 async-let 语法为您创建了一个子任务。 您还可以创建一个任务组并将子任务添加到该组，
+ 这使您可以更好地控制优先级和取消，并允许您创建动态数量的任务。
+ 
+ 
+ 任务按层次结构排列。 任务组中的每个任务都有相同的父任务，
+ 每个任务都可以有子任务。
+ 由于任务和任务组之间的明确关系，这种方法称为结构化并发。
+ 尽管您承担了一些正确性的责任，但任务之间明确的父子关系让 Swift 可以为您处理一些行为，例如传播取消，并让 Swift 在编译时检测一些错误。
+ 
+ */
+await withTaskGroup(of: Data.self) { taskGroup in
+    let photoNames = await listPhotos(inGallery: "Summer Vacation")
+    for name in photoNames {
+        taskGroup.addTask { await downloadPhoto(named: name) }
+    }
+}
+// ### Unstructured Concurrency
+/*
+ 非结构化任务没有父任务。
+ 您可以完全灵活地以程序需要的任何方式管理非结构化任务，但您也要对它们的正确性负全部责任。
+ 
+ 要创建在当前参与者上运行的非结构化任务，请调用 Task.init(priority:operation:) 初始化程序。
+ 要创建不属于当前参与者的非结构化任务，特别是作为分离任务，请调用 Task.detached(priority:operation:) 类方法。 这两个操作都返回一个您可以与之交互的任务——例如，等待其结果或取消它。
+ */
+let newPhoto = // ... some photo data ...
+let handle = Task {
+    return await add(newPhoto, toGalleryNamed: "Spring Adventures")
+}
+let result = await handle.value
+
+// ### Task Cancellation
+/*
+ Swift 并发使用协作取消模型。 每个任务检查它是否在其执行的适当点被取消，并以任何适当的方式响应取消。 这取决于您做的工作，这通常意味着以下之一：
+    1 抛出类似 CancellationError 的错误
+    2 返回 nil 或空集合
+    3 返回部分完成的工作
+ 
+ 要检查取消，请调用 Task.checkCancellation()，如果任务已被取消，则会引发 CancellationError，
+ 
+ 或者检查 Task.isCancelled 的值并在自己的代码中处理取消。
+ 
+ 例如，从画廊下载照片的任务可能需要删除部分下载并关闭网络连接。
+
+ 要手动传播取消，请调用 Task.cancel()。
+ */
+
+// ## 5 Actors
+/*
+ 您可以使用任务将程序分解为独立的并发部分。 任务彼此隔离，这使得它们可以安全地同时运行，但有时您需要在任务之间共享一些信息。 Actor 让您可以在并发代码之间安全地共享信息。
+
+ 和类一样，actor 是引用类型
+ 与类不同，actor 一次只允许一个任务访问其可变状态，
+ 这使得多个任务中的代码可以安全地与同一个 actor 实例进行交互。
+ 
+ 
+ */
+// use actor keyword define actors
+actor TemperatureLogger {
+    let label: String
+    var measurements: [Int]
+    private(set) var max: Int
+
+    init(label: String, measurement: Int) {
+        self.label = label
+        self.measurements = [measurement]
+        self.max = measurement
+    }
+}
+// 当你访问一个 actor 的属性或方法时，你使用 await 来标记潜在的暂停点。 例如：
+let logger = TemperatureLogger(label: "Outdoors", measurement: 25)
+print(await logger.max)
+// Prints "25"
+/*
+ 在这个例子中，访问 logger.max 是一个暂停点。
+ 因为参与者一次只允许一个任务访问其可变状态，如
+ 果来自另一个任务的代码已经与记录器交互，则此代码在等待访问该属性时暂停。
+ */
+
+/* 相反，作为 actor 的一部分的代码在访问 actor 的属性时不会编写 await
+ 
+ 防止多个任务同时与同一个实例交互可以防止出现以下事件序列的问题
+ 1 您的代码调用 update(with:) 方法。它首先更新测量数组。
+ 2 在您的代码可以更新最大值之前，其他地方的代码会读取最大值和温度数组。
+ 3 您的代码通过更改 max 来完成更新。
+ 
+ 因为 update(with:) 不包含任何 await 暂停，所以没有其他代码可以访问更新过程中的数据
+ */
+extension TemperatureLogger {
+    func update(with measurement: Int) {
+        measurements.append(measurement)
+        if measurement > max { // 访问 max 属性而不写 await
+            max = measurement
+        }
+    }
+}
+// print(logger.max)  // Error
+/*
+ *****
+ 在没有 await 的情况下访问 logger.max 会失败，
+ 因为 Actor 的属性是该 Actor 的隔离本地状态的一部分。
+ Swift 保证只有 Actor 内部的代码才能访问 Actor 的本地状态。 这种保证称为参与者隔离。
+ */
+
+// ## 6 Sendable Types
+/*
+ task 和 actor 让您可以将程序分片可以安全地同时运行的部分。
+ 在任务或参与者实例内部，包含可变状态（如变量和属性）的程序部分称为并发域。
+ 某些类型的数据不能在并发域之间共享，因为这些数据包含可变状态，但它不能防止重叠访问。
+ 
+ 可以从一个并发域共享到另一个并发域的类型称为可发送类型。
+ 例如，它可以在调用参与者方法时作为参数传递，也可以作为任务的结果返回。
+ 本章前面的示例没有讨论可发送性，因为这些示例使用简单的值类型，
+ 对于在并发域之间传递的数据始终可以安全共享。
+ 相反，某些类型在并发域之间传递是不安全的。
+ 例如，当您在不同任务之间传递该类的实例时，包含可变属性并且不序列化对这些属性的访问的类可能会产生不可预测和不正确的结果。
+ 
+ 
+ 您可以通过声明符合 Sendable 协议来将类型标记为可发送。
+ 该协议没有任何代码要求，但它确实有 Swift 强制执行的语义要求。 一般来说，可以通过三种方式支持 Sendable 类型：
+
+      1 该类型是值类型，其可变状态由其他可发送数据组成——
+      例如，具有可发送的存储属性的结构或具有可发送的关联值的枚举。
+
+      2 该类型没有任何可变状态，其不可变状态由其他可发送数据组成——
+        例如，只有只读属性的结构或类。
+
+      3 该类型具有确保其可变状态安全的代码--
+        例如标记为 @MainActor 的类 或序列化对其在特定线程或队列上的属性的访问的类。
+ 
+ 
+ 
+ */
+
+// 某些类型始终是 Sendable，例如仅具有 Sendable 属性的结构和关联值的枚举。 例如：
+struct TemperatureReading: Sendable {
+    var measurement: Int
+}
+
+extension TemperatureLogger {
+    func addReading(from reading: TemperatureReading) {
+        measurements.append(reading.measurement)
+    }
+}
+
+let logger = TemperatureLogger(label: "Tea kettle", measurement: 85)
+let reading = TemperatureReading(measurement: 45)
+await logger.addReading(from: reading)
+
+/*
+ 因为 TemperatureReading 是一个只有可发送属性的结构，并且该结构没有标记为 public 或 @usableFromInline，所以它是隐式可发送的。 这是一个隐含符合可发送协议的结构版本：
+ */
+
+struct TemperatureReading {
+    var measurement: Int
+}
+{% endhighlight %}
+
+
+## 0x02 Type Casting
+
+{% highlight ruby %}
+/*
+ 类型转换是一种检查实例类型的方法，或者将该实例视为与其自身类层次结构中其他位置不同的超类或子类。
+
+ Swift 中的类型转换是通过 is 和 as 运算符实现的。
+
+ 您还可以使用类型转换来检查类型是否符合协议
+ */
+
+// ## 1 Defining a Class Hierarchy for Type Casting
+
+class MediaItem {
+    var name: String
+    init(name: String) {
+        self.name = name
+    }
+}
+class Movie: MediaItem {
+    var director: String
+    init(name: String, director: String) {
+        self.director = director
+        super.init(name: name)
+    }
+}
+
+class Song: MediaItem {
+    var artist: String
+    init(name: String, artist: String) {
+        self.artist = artist
+        super.init(name: name)
+    }
+}
+
+let library = [
+    Movie(name: "Casablanca", director: "Michael Curtiz"),
+    Song(name: "Blue Suede Shoes", artist: "Elvis Presley"),
+    Movie(name: "Citizen Kane", director: "Orson Welles"),
+    Song(name: "The One And Only", artist: "Chesney Hawkes"),
+    Song(name: "Never Gonna Give You Up", artist: "Rick Astley")
+]
+// the type of "library" is inferred to be [MediaItem]
+
+// ## 2 Checking Type
+/*
+ 使用类型检查运算符 (is) 检查实例是否属于某个子类类型。
+ 如果实例属于该类型的子类，则类型检查运算符返回 true，否则返回 false。
+ */
+var movieCount = 0
+var songCount = 0
+
+for item in library {
+    if item is Movie {
+        movieCount += 1
+    } else if item is Song {
+        songCount += 1
+    }
+}
+
+print("Media library contains \(movieCount) movies and \(songCount) songs")
+// Prints "Media library contains 2 movies and 3 songs"
+
+// ## 3 Downcasting
+/*
+ 类型转换运算符使用 as? 或 as!
+ 
+ 强制转换实际上不会修改实例或更改其值。
+ 底层实例保持不变； 它被简单地视为和访问它已转换为的类型的实例。
+ 
+ */
+for item in library {
+    if let movie = item as? Movie {
+        print("Movie: \(movie.name), dir. \(movie.director)")
+    } else if let song = item as? Song {
+        print("Song: \(song.name), by \(song.artist)")
+    }
+}
+
+// Movie: Casablanca, dir. Michael Curtiz
+// Song: Blue Suede Shoes, by Elvis Presley
+// Movie: Citizen Kane, dir. Orson Welles
+// Song: The One And Only, by Chesney Hawkes
+// Song: Never Gonna Give You Up, by Rick Astley
+
+
+// ## 3 Type Casting for Any and AnyObject
+/*
+ Swift 为未指定的类型提供两种特殊类型
+  1 Any 表示任何类型的实例，包括函数类型
+  2 AnyObject 表示任何类的实例
+
+
+ */
+var things: [Any] = []
+
+things.append(0)
+things.append(0.0)
+things.append(42)
+things.append(3.14159)
+things.append("hello")
+things.append((3.0, 5.0))
+things.append(Movie(name: "Ghostbusters", director: "Ivan Reitman"))
+things.append({ (name: String) -> String in "Hello, \(name)" })
+
+for thing in things {
+    switch thing {
+    case 0 as Int:
+        print("zero as an Int")
+    case 0 as Double:
+        print("zero as a Double")
+    case let someInt as Int:
+        print("an integer value of \(someInt)")
+    case let someDouble as Double where someDouble > 0:
+        print("a positive double value of \(someDouble)")
+    case is Double:
+        print("some other double value that I don't want to print")
+    case let someString as String:
+        print("a string value of \"\(someString)\"")
+    case let (x, y) as (Double, Double):
+        print("an (x, y) point at \(x), \(y)")
+    case let movie as Movie:
+        print("a movie called \(movie.name), dir. \(movie.director)")
+    case let stringConverter as (String) -> String:
+        print(stringConverter("Michael"))
+    default:
+        print("something else")
+    }
+}
+
+/*
+ Any 类型表示任何类型的值，包括可选类型。 如果你在期望 Any 类型的值的地方使用可选值，Swift 会给你一个警告。 如果确实需要将可选值用作 Any 值，则可以使用 as 运算符将可选值显式转换为 Any，如下所示。
+ */
+let optionalNumber: Int? = 3
+things.append(optionalNumber)        // Warning
+things.append(optionalNumber as Any) // No warning
+{% endhighlight %}
+
+
+## 0x03 Nested Types
+{% highlight ruby %}
+// 枚举、结构体、类都支持嵌套类型
+
+// ## 1 Nested Types in Action
+
+struct BlackjackCard {
+
+    // nested Suit enumeration
+    enum Suit: Character {
+        case spades = "♠", hearts = "♡", diamonds = "♢", clubs = "♣"
+    }
+
+    // nested Rank enumeration
+    enum Rank: Int {
+        case two = 2, three, four, five, six, seven, eight, nine, ten
+        case jack, queen, king, ace
+        struct Values {
+            let first: Int, second: Int?
+        }
+        var values: Values {
+            switch self {
+            case .ace:
+                return Values(first: 1, second: 11)
+            case .jack, .queen, .king:
+                return Values(first: 10, second: nil)
+            default:
+                return Values(first: self.rawValue, second: nil)
+            }
+        }
+    }
+
+    // BlackjackCard properties and methods
+    let rank: Rank, suit: Suit
+    var description: String {
+        var output = "suit is \(suit.rawValue),"
+        output += " value is \(rank.values.first)"
+        if let second = rank.values.second {
+            output += " or \(second)"
+        }
+        return output
+    }
+}
+
+let theAceOfSpades = BlackjackCard(rank: .ace, suit: .spades)
+print("theAceOfSpades: \(theAceOfSpades.description)")
+// Prints "theAceOfSpades: suit is ♠, value is 1 or 11"
+
+
+// ## 2 Referring to Nested Types
+let heartsSymbol = BlackjackCard.Suit.hearts.rawValue
+// heartsSymbol is "♡"
+{% endhighlight %}
+
+## 0x04 Extensions
+{% highlight ruby %}
+/*
+ Extensions 向现有的类、结构、枚举或协议类型添加新功能。
+ （与 Objective-C 类别不同，Swift 扩展没有名称。）
+ 
+ Swift 中的 Extensions 可以：
+      1 添加计算实例属性和计算类型属性
+      2 定义实例方法和类型方法
+      3 提供新的初始化器
+      4 定义下标
+      5 定义和使用新的嵌套类型
+      6 使现有类型符合协议
+ 
+ 在 Swift 中，您甚至可以扩展协议以提供其要求的实现，
+ 或者添加符合类型可以利用的附加功能。
+ 
+ **** Extensions 可以为类型添加新功能，但不能 override 现有功能。
+ */
+
+// ## 1 Extension Syntax
+/*
+ 语法 1
+ extension SomeType {
+     // new functionality to add to SomeType goes here
+ }
+ 语法 2
+ extension SomeType: SomeProtocol, AnotherProtocol {
+     // implementation of protocol requirements goes here
+ }
+
+ 如果您定义扩展以向现有类型添加新功能，则新功能将在该类型的所有现有实例上可用，即使它们是在定义扩展之前创建的。
+ */
+
+// ## 2 Computed Properties
+// 添加计算实例属性
+extension Double {
+    var km: Double { return self * 1_000.0 }
+    var m: Double { return self }
+    var cm: Double { return self / 100.0 }
+    var mm: Double { return self / 1_000.0 }
+    var ft: Double { return self / 3.28084 }
+}
+let oneInch = 25.4.mm
+print("One inch is \(oneInch) meters")
+// Prints "One inch is 0.0254 meters"
+let threeFeet = 3.ft
+print("Three feet is \(threeFeet) meters")
+// Prints "Three feet is 0.914399970739201 meters"
+
+let aMarathon = 42.km + 195.m
+print("A marathon is \(aMarathon) meters long")
+// Prints "A marathon is 42195.0 meters long"
+
+/*
+ **** Note：
+ extension 可以添加新的计算属性，但它们不能添加存储属性，或将属性观察者添加到现有属性。
+*/
+
+// ## 3 Initializers
+
+/*
+ Extension 可以提供便利构造器，但不能向类添加新的指定初始化器或 deinit。
+ 指定的初始化器和 deinit 必须始终由原始类实现提供。
+ 
+ 
+ 如果您使用扩展将初始化程序添加到为所有存储属性提供默认值且未定义任何自定义初始化程序的值类型，则可以从扩展程序的初始化程序中调用该值类型的默认初始化程序和成员初始化程序.如果您将初始化程序编写为值类型的原始实现的一部分，则不会出现这种情况，如值类型的初始化程序委托中所述。
+
+ */
+
+struct Size {
+    var width = 0.0, height = 0.0
+}
+struct Point {
+    var x = 0.0, y = 0.0
+}
+struct Rect {
+    var origin = Point()
+    var size = Size()
+}
+
+// 扩展调用成员初始化器
+// 如果您提供带有扩展的新初始化程序，您仍然有责任确保在初始化程序完成后每个实例都已完全初始化。
+extension Rect {
+    init(center: Point, size: Size) {
+        let originX = center.x - (size.width / 2)
+        let originY = center.y - (size.height / 2)
+        self.init(origin: Point(x: originX, y: originY), size: size)
+    }
+}
+
+// ## 4 Methods
+/*
+ Methods 可以添加实例方法或类方法
+ */
+
+extension Int {
+    func repetitions(task: () -> Void) {
+        for _ in 0..<self {
+            task()
+        }
+    }
+}
+3.repetitions {
+    print("Hello!")
+}
+// Hello!
+// Hello!
+// Hello!
+
+// ### Mutating Instance Methods
+// use mutating keyword
+extension Int {
+    mutating func square() {
+        self = self * self
+    }
+}
+var someInt = 3
+someInt.square()
+// someInt is now 9
+
+
+// ## 5 Subscripts
+
+extension Int {
+    subscript(digitIndex: Int) -> Int {
+        var decimalBase = 1
+        for _ in 0..<digitIndex {
+            decimalBase *= 10
+        }
+        return (self / decimalBase) % 10
+    }
+}
+746381295[0]
+// returns 5
+746381295[1]
+// returns 9
+746381295[2]
+// returns 2
+746381295[8]
+// returns 7
+
+// ## 6 Nested Types
+// Extensions can add new nested types to existing classes, structures, and enumerations:
+
+extension Int {
+    enum Kind {
+        case negative, zero, positive
+    }
+    var kind: Kind {
+        switch self {
+        case 0:
+            return .zero
+        case let x where x > 0:
+            return .positive
+        default:
+            return .negative
+        }
+    }
+}
+
+
+func printIntegerKinds(_ numbers: [Int]) {
+    for number in numbers {
+        switch number.kind {
+        case .negative:
+            print("- ", terminator: "")
+        case .zero:
+            print("0 ", terminator: "")
+        case .positive:
+            print("+ ", terminator: "")
+        }
+    }
+    print("")
+}
+printIntegerKinds([3, 19, -27, 0, -6, 0, 7])
+// Prints "+ + - 0 - 0 + "
+{% endhighlight %}
+
+## 0x05 Protocols
+{% highlight ruby %}
+// # Protocols
+/*
+ 协议可以被类、结构或枚举遵守
+ */
+
+// ## 1 Protocol Syntax
+/*
+ 语法 1
+ protocol SomeProtocol {
+     // protocol definition goes here
+ }
+ 
+ 语法 2
+ struct SomeStructure: FirstProtocol, AnotherProtocol {
+     // structure definition goes here
+ }
+
+ 语法 3
+ class SomeClass: SomeSuperclass, FirstProtocol, AnotherProtocol {
+     // class definition goes here
+ }
+ */
+
+// ## 2 Property Requirements
+/*
+ protocol 只是指定属性名和类型，不管是存储属性还是计算属性
+ protocol 指定属性的 get set 要求，并使用 var
+*/
+protocol SomeProtocol {
+    var mustBeSettable: Int { get set }
+    var doesNotNeedToBeSettable: Int { get }
+}
+// 使用 static
+protocol AnotherProtocol {
+    static var someTypeProperty: Int { get set }
+}
+
+protocol FullyNamed {
+    var fullName: String { get }
+}
+
+struct Person: FullyNamed {
+    var fullName: String
+}
+let john = Person(fullName: "John Appleseed")
+// john.fullName is "John Appleseed"
+
+
+class Starship: FullyNamed {
+    var prefix: String?
+    var name: String
+    init(name: String, prefix: String? = nil) {
+        self.name = name
+        self.prefix = prefix
+    }
+    var fullName: String {
+        (prefix != nil ? prefix! + " " : "") + name
+    }
+}
+var ncc1701 = Starship(name: "Enterprise", prefix: "USS")
+// ncc1701.fullName is "USS Enterprise"
+
+
+// ## 3 Method Requirements
+/*
+ 不能为协议定义中的方法参数指定默认值。
+  
+ **** 在协议中定义类型方法要求时，您始终使用 static 关键字作为前缀。
+ 即使类型方法要求在由类实现时以 class 或 static 关键字为前缀，也是如此：
+ 
+ */
+// 定义类型方法
+protocol SomeProtocol2 {
+    static func someTypeMethod()
+}
+// 定义实例方法
+protocol RandomNumberGenerator {
+    func random() -> Double
+}
+
+class LinearCongruentialGenerator: RandomNumberGenerator {
+    var lastRandom = 42.0
+    let m = 139968.0
+    let a = 3877.0
+    let c = 29573.0
+    func random() -> Double {
+        lastRandom = ((lastRandom * a + c)
+            .truncatingRemainder(dividingBy:m))
+        return lastRandom / m
+    }
+}
+let generator = LinearCongruentialGenerator()
+print("Here's a random number: \(generator.random())")
+// Prints "Here's a random number: 0.3746499199817101"
+print("And another one: \(generator.random())")
+// Prints "And another one: 0.729023776863283"
+
+// ## 4 **** Mutating Method Requirements
+// *** 重要：Mutating 关键字写在方法前可以让值类型在方法内修改实例或其属性
+
+protocol Togglable {
+    mutating func toggle()
+}
+
+enum OnOffSwitch: Togglable {
+    case off, on
+    mutating func toggle() {
+        switch self {
+        case .off:
+            self = .on
+        case .on:
+            self = .off
+        }
+    }
+}
+var lightSwitch = OnOffSwitch.off
+lightSwitch.toggle()
+// lightSwitch is now equal to .on
+
+
+// ## 5 Initializer Requirements
+
+protocol SomeProtocol3 {
+    // class 实现时可以提供指定初始化器或便利构造器
+    init(someParameter: Int)
+}
+// ### Class Implementations of Protocol Initializer Requirements
+/*
+ 使用 required 修饰符可确保您在符合类的所有子类上提供初始化器要求的显式或继承实现，
+ 以便它们也符合协议。
+ */
+class SomeClass: SomeProtocol3 {
+    // 必须标记 required，
+    required init(someParameter: Int) {
+        // initializer implementation goes here
+    }
+}
+
+/*
+ 您不需要在使用 final 修饰符标记的类上使用 required 修饰符标记协议初始化器实现，
+ 因为 final 类不能子类化。
+ */
+
+// Failable Initializer Requirements
+/*
+ 协议可以定义符合类型的可失败初始化程序要求，如可失败初始化程序中定义的那样。
+ 
+ 可失败的初始化器要求可以通过符合类型的可失败或不可失败的初始化器来满足。
+ 一个不可失败的初始化器要求可以通过一个不可失败的初始化器
+ 或一个隐式展开的可失败的初始化器来满足。
+ 
+ */
+
+// ## 6 Protocols as Types
+/*
+ 您可以在许多允许其他类型的地方使用协议，包括：
+      1 作为函数、方法或初始化程序中的参数类型或返回类型
+      2 作为常量、变量或属性的类型
+      3 作为数组、字典或其他容器中的 item 类型
+ */
+
+class Dice {
+    let sides: Int
+    let generator: RandomNumberGenerator
+    init(sides: Int, generator: RandomNumberGenerator) {
+        self.sides = sides
+        self.generator = generator
+    }
+    func roll() -> Int {
+        return Int(generator.random() * Double(sides)) + 1
+    }
+}
+var d6 = Dice(sides: 6, generator: LinearCongruentialGenerator())
+for _ in 1...5 {
+    print("Random dice roll is \(d6.roll())")
+}
+// Random dice roll is 3
+// Random dice roll is 5
+// Random dice roll is 4
+// Random dice roll is 5
+// Random dice roll is 4
+
+// ## 7 Delegation
+protocol DiceGame {
+    var dice: Dice { get }
+    func play()
+}
+protocol DiceGameDelegate: AnyObject {
+    func gameDidStart(_ game: DiceGame)
+    func game(_ game: DiceGame, didStartNewTurnWithDiceRoll diceRoll: Int)
+    func gameDidEnd(_ game: DiceGame)
+}
+class SnakesAndLadders: DiceGame {
+    let finalSquare = 25
+    let dice = Dice(sides: 6, generator: LinearCongruentialGenerator())
+    var square = 0
+    var board: [Int]
+    init() {
+        board = Array(repeating: 0, count: finalSquare + 1)
+        board[03] = +08; board[06] = +11; board[09] = +09; board[10] = +02
+        board[14] = -10; board[19] = -11; board[22] = -02; board[24] = -08
+    }
+    weak var delegate: DiceGameDelegate?
+    func play() {
+      print("play SnakesAndLadders")
+        square = 0
+        delegate?.gameDidStart(self)
+        gameLoop: while square != finalSquare {
+            let diceRoll = dice.roll()
+            delegate?.game(self, didStartNewTurnWithDiceRoll: diceRoll)
+            switch square + diceRoll {
+            case finalSquare:
+                break gameLoop
+            case let newSquare where newSquare > finalSquare:
+                continue gameLoop
+            default:
+                square += diceRoll
+                square += board[square]
+            }
+        }
+        delegate?.gameDidEnd(self)
+    }
+}
+class DiceGameTracker: DiceGameDelegate {
+    var numberOfTurns = 0
+    func gameDidStart(_ game: DiceGame) {
+        numberOfTurns = 0
+        if game is SnakesAndLadders {
+            print("Started a new game of Snakes and Ladders")
+        }
+        print("The game is using a \(game.dice.sides)-sided dice")
+    }
+    func game(_ game: DiceGame, didStartNewTurnWithDiceRoll diceRoll: Int) {
+        numberOfTurns += 1
+        print("Rolled a \(diceRoll)")
+    }
+    func gameDidEnd(_ game: DiceGame) {
+        print("The game lasted for \(numberOfTurns) turns")
+    }
+}
+
+let tracker = DiceGameTracker()
+let game = SnakesAndLadders()
+game.delegate = tracker
+game.play()
+// Started a new game of Snakes and Ladders
+// The game is using a 6-sided dice
+// Rolled a 3
+// Rolled a 5
+// Rolled a 4
+// Rolled a 5
+// The game lasted for 4 turns
+
+
+// ## 8 Adding Protocol Conformance with an Extension
+// 通过 Extension 扩展一个类型遵守某个协议
+protocol TextRepresentable {
+    var textualDescription: String { get }
+}
+extension Dice: TextRepresentable {
+    var textualDescription: String {
+        return "A \(sides)-sided dice"
+    }
+}
+let d12 = Dice(sides: 12, generator: LinearCongruentialGenerator())
+print(d12.textualDescription)
+// Prints "A 12-sided dice"
+
+
+
+extension SnakesAndLadders: TextRepresentable {
+    var textualDescription: String {
+        return "A game of Snakes and Ladders with \(finalSquare) squares"
+    }
+}
+print(game.textualDescription)
+// Prints "A game of Snakes and Ladders with 25 squares"
+
+
+
+// ### Conditionally Conforming to a Protocol
+// ****** 通过 where 对 Element 进行限制
+extension Array: TextRepresentable where Element: TextRepresentable {
+    var textualDescription: String {
+        let itemsAsText = self.map { $0.textualDescription }
+        return "[" + itemsAsText.joined(separator: ", ") + "]"
+    }
+}
+let myDice = [d6, d12]
+print(myDice.textualDescription)
+// Prints "[A 6-sided dice, A 12-sided dice]"
+
+// ### Declaring Protocol Adoption with an Extension
+// 如果一个类型已经实现了一个协议的所有要求，则可以声明一个空 Extension
+struct Hamster {
+    var name: String
+    var textualDescription: String {
+        return "A hamster named \(name)"
+    }
+}
+extension Hamster: TextRepresentable {}
+
+let simonTheHamster = Hamster(name: "Simon")
+let somethingTextRepresentable: TextRepresentable = simonTheHamster
+print(somethingTextRepresentable.textualDescription)
+// Prints "A hamster named Simon"
+
+/*
+ 类型不会仅仅通过满足其要求而自动适配协议，
+ 而是必须始终显式声明他们对协议的适配
+ 
+ */
+
+// ## 9 **** Adopting a Protocol Using a Synthesized Implementation
+/*
+ ***** 重要
+ Swift 为以下类型的自定义类型提供了 Equatable 的合成实现：
+      1 仅具有符合 Equatable 协议的存储属性的结构体
+      2 仅具有符合 Equatable 协议的关联类型的枚举
+      3 没有关联类型的枚举
+ 
+ 自动合成使你不需要自己实现 == 操作符，
+ Equatable 有一个默认的 != 操作符实现
+ */
+struct Vector3D: Equatable {
+    var x = 0.0, y = 0.0, z = 0.0
+}
+
+let twoThreeFour = Vector3D(x: 2.0, y: 3.0, z: 4.0)
+let anotherTwoThreeFour = Vector3D(x: 2.0, y: 3.0, z: 4.0)
+if twoThreeFour == anotherTwoThreeFour {
+    print("These two vectors are also equivalent.")
+}
+// Prints "These two vectors are also equivalent."
+
+
+/*
+ Swift 为以下类型的自定义类型提供了 Hashable 的合成实现：
+
+      1 仅具有符合 Hashable 协议的存储属性的结构体
+
+      2 仅具有符合 Hashable 协议的关联类型的枚举
+
+      3 没有关联类型的枚举
+ 
+ 自动合成使你不需要自己实现 hash(into:)，
+
+ */
+
+/*
+ 
+ Swift 为没有原始值的枚举提供了 Comparable 的自动合成实现。
+ 如果枚举具有关联类型，则它们必须都符合 Comparable 协议。
+ 要接收 < 的自动合成实现，请在包含原始枚举声明的文件中声明与 Comparable 的一致性，
+ 而无需自己实现 < 运算符。
+ Comparable 协议的默认实现 <=、> 和 >= 提供了剩余的比较运算符。
+ */
+
+enum SkillLevel: Comparable {
+    case beginner
+    case intermediate
+    case expert(stars: Int)
+}
+var levels = [SkillLevel.intermediate, SkillLevel.beginner,
+              SkillLevel.expert(stars: 5), SkillLevel.expert(stars: 3)]
+for level in levels.sorted() {
+    print(level)
+}
+// Prints "beginner"
+// Prints "intermediate"
+// Prints "expert(stars: 3)"
+// Prints "expert(stars: 5)"
+
+// ## 10 Collections of Protocol Types
+/*
+ protocol 可以被用在集合（比数组或字典）中的元素，
+ */
+
+let things: [TextRepresentable] = [game, d12, simonTheHamster]
+for thing in things {
+    print(thing.textualDescription)
+}
+// A game of Snakes and Ladders with 25 squares
+// A 12-sided dice
+// A hamster named Simon
+
+// ## 11 Protocol Inheritance
+
+/*
+ 一个协议可以继承一个或多个其他协议，
+ 并且可以在它继承的要求之上添加进一步的要求。
+ 协议继承的语法类似于类继承的语法，但可以选择列出多个继承的协议，用逗号分隔：
+ */
+
+protocol InheritingProtocol: SomeProtocol, AnotherProtocol {
+    // protocol definition goes here
+}
+
+protocol PrettyTextRepresentable: TextRepresentable {
+    var prettyTextualDescription: String { get }
+}
+
+extension SnakesAndLadders: PrettyTextRepresentable {
+    var prettyTextualDescription: String {
+        var output = textualDescription + ":\n"
+        for index in 1...finalSquare {
+            switch board[index] {
+            case let ladder where ladder > 0:
+                output += "▲ "
+            case let snake where snake < 0:
+                output += "▼ "
+            default:
+                output += "○ "
+            }
+        }
+        return output
+    }
+}
+print(game.prettyTextualDescription)
+// A game of Snakes and Ladders with 25 squares:
+// ○ ○ ▲ ○ ○ ▲ ○ ○ ▲ ▲ ○ ○ ○ ▼ ○ ○ ○ ○ ▼ ○ ○ ▼ ○ ▼ ○
+
+
+// ## *** 12 Class-Only Protocols
+// 通过 AnyObject 限制只能 class 遵守 Protocols
+// **** Class-Only Protocols 用于需要只让引用类型适配
+protocol SomeInheritedProtocol {
+  
+}
+// SomeClassOnlyProtocol 只能被 class 适配
+protocol SomeClassOnlyProtocol: AnyObject, SomeInheritedProtocol {
+    // class-only protocol definition goes here
+}
+
+// ## 13 ***** Protocol Composition
+/*
+ *******重要
+ 协议组合语法： SomeProtocol & AnotherProtocol
+ 除了协议列表之外，协议组合还可以包含一种类类型，您可以使用它来指定所需的超类。
+ 
+ */
+
+protocol Named {
+    var name: String { get }
+}
+protocol Aged {
+    var age: Int { get }
+}
+struct Human: Named, Aged {
+    var name: String
+    var age: Int
+}
+// Named & Aged
+func wishHappyBirthday(to celebrator: Named & Aged) {
+    print("Happy birthday, \(celebrator.name), you're \(celebrator.age)!")
+}
+let birthdayPerson = Human(name: "Malcolm", age: 21)
+wishHappyBirthday(to: birthdayPerson)
+// Prints "Happy birthday, Malcolm, you're 21!"
+
+// 另一个例子
+// 指定 Location 类，并且遵守 Named 协议
+class Location {
+    var latitude: Double
+    var longitude: Double
+    init(latitude: Double, longitude: Double) {
+        self.latitude = latitude
+        self.longitude = longitude
+    }
+}
+class City: Location, Named {
+    var name: String
+    init(name: String, latitude: Double, longitude: Double) {
+        self.name = name
+        super.init(latitude: latitude, longitude: longitude)
+    }
+}
+func beginConcert(in location: Location & Named) {
+    print("Hello, \(location.name)!")
+}
+
+let seattle = City(name: "Seattle", latitude: 47.6, longitude: -122.3)
+beginConcert(in: seattle)
+// Prints "Hello, Seattle!"
+
+
+// ## 14 **** Checking for Protocol Conformance
+/*
+ **** 使用 is 和 as 进行 type casting
+ 
+ 1 如果一个实例实现了 protocol，is 操作符返回 true，否则返回 fasle
+ 2 as? 返回一个 protocol 的可选类型，如果值没有实现 protocol 则返回 nil
+ 3 as! 强制解包为 protocol 类型，如果没有实现 protocol 报运行时错误
+ 
+ */
+protocol HasArea {
+    var area: Double { get }
+}
+class Circle: HasArea {
+    let pi = 3.1415927
+    var radius: Double
+    var area: Double { return pi * radius * radius }
+    init(radius: Double) { self.radius = radius }
+}
+class Country: HasArea {
+    var area: Double
+    init(area: Double) { self.area = area }
+}
+
+class Animal {
+    var legs: Int
+    init(legs: Int) { self.legs = legs }
+}
+
+let objects: [AnyObject] = [
+    Circle(radius: 2.0),
+    Country(area: 243_610),
+    Animal(legs: 4)
+]
+for object in objects {
+    if let objectWithArea = object as? HasArea {
+        print("Area is \(objectWithArea.area)")
+    } else {
+        print("Something that doesn't have an area")
+    }
+}
+// Area is 12.5663708
+// Area is 243610.0
+// Something that doesn't have an area
+
+// ## 15 ***** Optional Protocol Requirements
+/*
+ **** 重要
+ 可选要求以 optional 修饰符为前缀。
+ 可选要求是可用的，以便您可以编写与 Objective-C 互操作的代码。
+ 协议和 optional 要求都必须用 @objc 属性标记。
+ 请注意 @objc 协议只能被继承自 Objective-C 类或其他 @objc 类的类采用。
+ 它们不能被结构或枚举采用。
+ 
+ 
+ 当您在可选需求中使用方法或属性时，其类型会自动变为可选。
+ 例如，(Int) -> String 类型的方法变为 ((Int) -> String)?。请注意，整个函数类型都包含在可选项中，而不是方法的返回值。
+ 
+ 可以使用可选链调用可选协议要求，以说明该要求未由符合协议的类型实现的可能性。 您可以通过在调用方法名称后写一个 ？来检查可选方法的实现，
+ 例如 someOptionalMethod?(someArgument) 检查是否有 someOptionalMethod 方法
+ 
+ */
+@objc protocol CounterDataSource {
+    @objc optional func increment(forCount count: Int) -> Int
+    @objc optional var fixedIncrement: Int { get }
+}
+/*
+ 严格来说，您可以编写符合 CounterDataSource 的自定义类，而无需实现任何协议要求。 毕竟，它们都是可选的。 尽管在技术上是允许的，但这并不是一个很好的数据源。
+ */
+
+class Counter {
+    var count = 0
+    var dataSource: CounterDataSource?
+    func increment() {
+        if let amount = dataSource?.increment?(forCount: count) {
+            count += amount
+        } else if let amount = dataSource?.fixedIncrement {
+            count += amount
+        }
+    }
+}
+
+class ThreeSource: NSObject, CounterDataSource {
+    let fixedIncrement = 3
+}
+var counter = Counter()
+counter.dataSource = ThreeSource()
+for _ in 1...4 {
+    counter.increment()
+    print(counter.count)
+}
+// 3
+// 6
+// 9
+// 12
+
+class TowardsZeroSource: NSObject, CounterDataSource {
+    func increment(forCount count: Int) -> Int {
+        if count == 0 {
+            return 0
+        } else if count < 0 {
+            return 1
+        } else {
+            return -1
+        }
+    }
+}
+counter.count = -4
+counter.dataSource = TowardsZeroSource()
+for _ in 1...5 {
+    counter.increment()
+    print(counter.count)
+}
+// -3
+// -2
+// -1
+// 0
+// 0
+
+
+// ## 16 Protocol Extensions
+/*
+ 可以扩展协议以提供方法、初始化程序、下标和计算属性实现以符合类型。
+ 这允许您在协议本身上定义行为，而不是在每种类型的单独一致性或全局函数中。
+
+
+ */
+//  例如，可以扩展 RandomNumberGenerator 协议以提供 randomBool() 方法，该方法使用所需 random() 方法的结果返回一个随机 Bool 值
+
+extension RandomNumberGenerator {
+    func randomBool() -> Bool {
+        return random() > 0.5
+    }
+}
+/*
+ 
+ 通过在协议上创建 extension，所有符合的类型都会自动获得此方法实现，而无需任何额外的修改。
+ 
+ Protocol Extensions 可以将实现添加到符合类型，
+ 但不能使 Protocol extend 或从另一个协议继承。
+ 协议继承总是在协议声明本身中指定。
+ */
+
+let generator2 = LinearCongruentialGenerator()
+print("Here's a random number: \(generator2.random())")
+// Prints "Here's a random number: 0.3746499199817101"
+print("And here's a random Boolean: \(generator2.randomBool())")
+// Prints "And here's a random Boolean: true"
+
+
+// ### Providing Default Implementations
+/*
+ 您可以使用 Protocol Extensions 为该协议的任何方法或计算属性提供默认实现。
+ 如果符合类型提供了它自定义的所需方法或属性的实现，则将使用该实现而不是扩展提供的默认实现。
+ 即自定义优先与默认实现
+ 
+ 可以在没有可选链的情况下调用具有默认实现。
+ 
+ 
+ */
+extension PrettyTextRepresentable  {
+    var prettyTextualDescription: String {
+        return textualDescription
+    }
+}
+// ### Adding Constraints to Protocol Extensions
+/*
+ 当您定义协议 Protocol Extensions 时，
+ 您可以指定在扩展的方法和属性可用之前符合类型必须满足的约束。
+ 您可以通过编写通用 where 子句将这些约束写在要扩展的协议名称之后。
+
+
+ */
+extension Collection where Element: Equatable {
+    func allEqual() -> Bool {
+        for element in self {
+            if element != self.first {
+                return false
+            }
+        }
+        return true
+    }
+}
+
+let equalNumbers = [100, 100, 100, 100, 100]
+let differentNumbers = [100, 100, 200, 100, 200]
+print(equalNumbers.allEqual())
+// Prints "true"
+print(differentNumbers.allEqual())
+// Prints "false"
+{% endhighlight %}
+
+
+
+
+
+{% highlight ruby %}
+{% endhighlight %}

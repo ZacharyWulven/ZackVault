@@ -1,0 +1,66 @@
+---
+layout: post
+title: HTML_CSS-01
+date: 2022-07-28 16:45:30.000000000 +09:00
+tag: html css
+---
+
+## 0x01 
+
+* head 标签用户看不到，设置浏览器特性用
+* body 展示给用户
+GB2312（不常用）只支持简体中文，不支持繁体；GKB（不常用）支持亚洲的，包括中文繁体；
+* Unicode 万国码，utf-8 是 Unicode 升级版
+* 竞价排名同一 IP 一段时间点击只算一次，SEO 就是利用技术手段迎合搜索引擎爬虫的偏好，让自己的网站在搜索结果往前靠
+lang="en" 就是 SEO 的一部分，告诉搜索引擎我们的网站是什么内容，更方便搜索引擎抓取网站
+* head 里的 meta content 就更适合爬虫喜好 
+{% highlight ruby %}
+<meta content="服装" name="keywords">
+
+<p> papd</p> 段落标签
+
+h${标题}*5 快速弄 5 个 h 标签
+<h1><h2> 标题标签
+
+<strong> 加粗</strong> 加粗效果
+
+<em>斜体</em> 斜体效果
+
+<del>$500</del> 中划线效果
+
+<address>北京市东城区东四十条</address> 地址标签用的少
+
+
+重要的标签
+<div>举个例子</div>
+<span>举个例子</span>
+div，span 标签很重要，标签没什么效果
+1 充电容器，分块，让页面结构化，
+2 容器可以绑定化操作，如可将容器内标签统一改颜色等
+    <div style="color:#f40">
+        <strong>a</strong>
+        <em>b</em>
+        <del>c</del>
+    </div>
+
+
+空格是单词分隔符，空格后浏览器才知道空格前后是俩单词，多个空格当成一个空格
+回车也是文字分隔符
+    <div style="width:100px;height:100px;background-color:red;">
+        sdlfjsdlkfjl sjfls dfsdfsdfsdfsdfsd 
+    </div>
+    
+
+
+{% endhighlight %}
+
+## html 编码，
+* 由 & 开头，；结尾，中间填充的东西就是 html 编码的特殊字符
+* &nbsp; 就是空格文本
+
+常用的 html 编码
+{% highlight ruby %}
+* 空格
+* &lt; < 小于
+* &gt; > 大于
+{% endhighlight %}

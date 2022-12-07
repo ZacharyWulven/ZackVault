@@ -1,0 +1,66 @@
+---
+layout: post
+title: 函数式编程思想 (一)
+date: 2021-02-06 16:04:30.000000000 +09:00
+categories: [函数式编程]
+tags: [函数式编程]
+---
+
+### 转变思维
+
+命令式编程风格常常迫使我们出于性能考虑，把不同的任务交织起来，以便能用一次循环来完成更多任务。记忆：指运行时自动缓存函数返回值的能力。
+
+面向对象编程通过封装不确定因素来使代码能被人理解。
+函数式编程通过尽量减少不确定因素来使代码能被人理解。
+
+命令式编程是按照程序是一系列改变状态命令来建模的一种编程风格。
+函数式编程将程序描述为表达式和变换，以及数学方程的形式建立模型，并尽量避免可变状态。
+
+{% highlight ruby %}
+1 多从结果着眼，少纠结具体的步骤
+2 多想想哪些问题其实可以归结为这几样基本操作的排列组合
+{% endhighlight %}
+
+#### 三板斧
+
+1 筛选 filter
+需要根据筛选条件来产生一个子集合时候用 filter
+{% highlight ruby %}
+var list = [1, 2, 3, 4, 5, 6, 7, 8, 9]
+let even = list.filter { $0 & 1 != 1 }
+{% endhighlight %}
+
+2 映射 map
+需要就地变换一个集合的时候 用 map
+{% highlight ruby %}
+var list = [1, 2, 3, 4, 5, 6, 7, 8, 9]
+let strList = list.map { String($0) }
+{% endhighlight %}
+
+各个语言普遍具备用来消除前台的库函数，一般将此操作称为 “展平 (flattening)”。下面例子对一个嵌套的列表执行展平的操作：
+{% highlight ruby %}
+List(List(1, 2, 3), List(4, 5, 6), List(7, 8, 9)) flatMap (\_.toList) => List(1, 2, 3, 4, 5, 6, 7, 8, 9)
+{% endhighlight %}
+
+flatMap() 函数还可以用在一些在传统眼光看来不存在嵌套的数据结构上，例如我们可以把字符串看成一系列嵌套在一起的字符
+{% highlight ruby %}
+word flatMap (\_.toList) => List(h, e, l, l, o, w, o, r, l, d)
+{% endhighlight %}
+
+3 折叠/化约
+reduce 和 fold 操作在功能上大致重合，两者都用一个积累量来收集集合元素。reduce 函数一般在需要为积累设定一个初始值的时候使用，而 fold 起始的时候累积量是空的。
+
+{% highlight ruby %}
+var list = [1, 2, 3, 4, 5, 6, 7, 8, 9]
+let sum = list.reduce(0) { (result, x) -> Int in result + x }
+{% endhighlight %}
+
+fold left 含义是用一个二元函数或运算符来结合列表的首元素和累积量的初始值，重复上一步直到列表耗尽，此时累积值的取值为折叠运算结果。
+由于加法交换律，fold left 和 fold right 结果是一样的，但有些运算不能随便调换顺序，这时 fold right 就会派上用场。
+
+在纯函数式语言里，fold left 和 fold right 的实现并不同，fold right 允许操作无限长度的列表，fold left 则不允许，需要把集合分成一小块来处理的时候用 reduce 或 fold。
+
+{% highlight ruby %}
+1 函数式编程以参数传递和函数的复合作为主要表现手段，我们不需要掌握太多作为 “不确定因素”存在的其他语言构造之间的交互规则，这点对于我们学习很重要
+2 懂得什么什么时候应该使用像 “reduce” 这样的高层次抽象，是掌握函数式编程的关键所在
+{% endhighlight %}

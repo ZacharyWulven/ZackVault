@@ -1,0 +1,131 @@
+---
+layout: post
+title: Go 补充笔记-01
+date: 2022-08-19 16:45:30.000000000 +09:00
+tag: 区块链
+---
+
+## 转义字符
+* \t 制表
+* \n 换行
+* \\ 一个 \
+* \" 一个 "
+* \r 一个回车，
+
+
+
+{% highlight ruby %}
+fmt.Println("天龙八部雪上飞狐\r张飞") // 张飞八部雪上飞狐
+张飞会覆盖掉天龙
+{% endhighlight %}
+
+## 字符串
+字符串也用"逗号" 换行连接
+{% highlight ruby %}
+  fmt.Println("hello",
+    "world")
+{% endhighlight %}
+
+{% highlight ruby %}
+https://studygolang.com/
+{% endhighlight %}
+
+## 
+{% highlight ruby %}
+var (
+  n1 = 200
+  n2 = 300
+  n3 int
+)
+
+const (
+  a1 = 1
+  a2
+  a3
+) 
+a1 a2 a3 都是 1
+{% endhighlight %}
+
+## 字符
+* go 使用 UTF-8 编码
+* 没有专门的字符型，使用 byte 来保存当个字符, var c1 byte = 'e'
+* 如果字符 在 ASCII 表中 直接使用 byte，如果超出了使用 int
+* 汉字是 3 个字节
+* 存储：字符->对应码值->二进制->存储
+* 读取：二进制->码值->字符->读取
+
+
+* rune 是 int32 别名，表示 Unicode 码点
+* byte 与 uint8 等价
+* format %T 查看变量类型
+* 查看变量占用字节大小， unsafe.Sizeof(n1)
+
+## 布尔
+* 布尔占一个字节
+
+## 字符串
+* 字符串是不可变的
+* 反引号，以字符串原生形式输出包括换行和特殊字符，可以防止攻击和输出源代码
+
+{% highlight ruby %}
+  ss := `const (
+  a1 = 1
+  a2
+  a3
+)
+`
+  fmt.Println(ss)
+  
+
+// 拼接 + 换行  
+str := "hello" + "world" +
+    "hello" + "world"
+fmt.Println(str)
+{% endhighlight %}
+
+## 类型转换
+* Go 在不同类型变量之间需要显示转换，使用 T(v) 进行转换
+* 转换不会改变原变量类型，只是把值转换后赋值给新变量
+
+
+
+## Note 基本类型转字符串
+
+### 方法一 use fmt.Sprintf()
+{% highlight ruby %}
+  var num1 int = 99
+  var num2 float64 = 23.456
+  var b bool = true
+  var char byte = 'e'
+  var str string // 空串
+
+  %q 该值对应的单引号括起来的 go 语法字符字面值，必要时使用安全的转义表示
+  str = fmt.Sprintf("%d", num1)
+  fmt.Printf("str type=%T str=%q\n", str, str)
+
+  str = fmt.Sprintf("%f", num2)
+  fmt.Printf("str type=%T str=%q\n", str, str)
+
+  str = fmt.Sprintf("%t", b)
+  fmt.Printf("str type=%T str=%q\n", str, str)
+
+  str = fmt.Sprintf("%c", char)
+  fmt.Printf("str type=%T str=%q\n", str, str)
+{% endhighlight %}
+
+### 方法一 use strconv
+{% highlight ruby %}
+  // 方式二 使用 strconv
+  fmt.Println("------strconv------")
+  str = strconv.FormatInt(int64(num1), 10)
+  fmt.Printf("str type=%T str=%q\n", str, str)
+
+  // 'f' 表示格式，f 指
+  // prec 10 表示小数点后保留 10 位
+  // bitSize 64 表示小数是 float64
+  str = strconv.FormatFloat(num2, 'f', 10, 64) // str type=string str="99"
+  fmt.Printf("str type=%T str=%q\n", str, str) // str type=string str="23.4560000000"
+
+  str = strconv.FormatBool(b)
+  fmt.Printf("str type=%[1]T str=%[1]q\n", str)
+{% endhighlight %}

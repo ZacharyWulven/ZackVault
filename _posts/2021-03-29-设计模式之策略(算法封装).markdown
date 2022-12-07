@@ -1,0 +1,197 @@
+---
+layout: post
+title: 设计模式之策略(算法封装)
+date: 2021-03-28 22:45:30.000000000 +09:00
+categories: [iOS, 设计模式]
+tags: [iOS, 设计模式]
+---
+
+### 策略模式
+
+定义一系列算法，把它们一个个封装起来，并且可以相互替换，本模式使得算法可独立于十月它的客户而变化。核心思想是定义接口，不同的算法封装在不同的实例中。
+
+### 何时使用策略
+
+1. 一个类在其操作中使用多个条件语句来定义许多行为。我们可以把相关的条件分支移到它们自己的策略中
+2. 需要算法的各种变体
+3. 需要避免把复杂的、与算法相关的数据结构暴露给别人
+
+### 示例代码
+
+{% highlight ruby %}
+#import <Foundation/Foundation.h>
+
+static NSString \* const InputValidationErrorDomain = @"InputValidationErrorDomain";
+
+@interface InputValidator : NSObject
+{
+
+}
+
+// A stub for any actual validation strategy
+
+- (BOOL) validateInput:(UITextField \*)input error:(NSError \*\*) error;
+
+@end
+
+@implementation InputValidator
+
+// A stub for any actual validation strategy
+
+- (BOOL) validateInput:(UITextField *)input error:(NSError \*\*) error
+  {
+  if (error)
+  {
+  *error = nil;
+  }
+  return NO;
+  }
+
+@end
+{% endhighlight %}
+
+{% highlight ruby %}
+@interface NumericInputValidator : InputValidator
+{
+
+}
+
+// A validation method that makes sure the input only contains
+// numbers i.e. 0-9
+
+- (BOOL) validateInput:(UITextField \*)input error:(NSError \*\*) error;
+
+@end
+
+@implementation NumericInputValidator
+
+- (BOOL) validateInput:(UITextField *)input error:(NSError\*\*) error
+  {
+  NSError *regError = nil;
+  NSRegularExpression _regex = [NSRegularExpression
+  regularExpressionWithPattern:@"^[0-9]_$"
+  options:NSRegularExpressionAnchorsMatchLines
+  error:&regError];
+  NSUInteger numberOfMatches = [regex
+  numberOfMatchesInString:[input text]
+  options:NSMatchingAnchored
+  range:NSMakeRange(0, [[input text] length])];
+  // if there is not a single match
+  // then return an error and NO
+  if (numberOfMatches == 0)
+  {
+  if (error != nil)
+  {
+  NSString *description = NSLocalizedString(@"Input Validation Failed", @"");
+  NSString *reason = NSLocalizedString(@"The input can only contain numerical values", @"");
+  NSArray *objArray = [NSArray arrayWithObjects:description, reason, nil];
+  NSArray *keyArray = [NSArray arrayWithObjects:NSLocalizedDescriptionKey,
+  NSLocalizedFailureReasonErrorKey, nil];
+
+        NSDictionary *userInfo = [NSDictionary dictionaryWithObjects:objArray
+                                                             forKeys:keyArray];
+        *error = [NSError errorWithDomain:InputValidationErrorDomain
+                                     code:1001
+                                 userInfo:userInfo];
+      }
+
+      return NO;
+
+  }
+  return YES;
+  }
+
+@end
+{% endhighlight %}
+
+{% highlight ruby %}
+
+@interface AlphaInputValidator : InputValidator
+{
+
+}
+
+// A validation method that makes sure the input only
+// contains letters only i.e. a-z A-Z
+
+- (BOOL) validateInput:(UITextField \*)input error:(NSError \*\*) error;
+
+@end
+
+@implementation AlphaInputValidator
+
+- (BOOL) validateInput:(UITextField *)input error:(NSError \*\*) error
+  {
+  NSRegularExpression *regex = [NSRegularExpression
+  regularExpressionWithPattern:@"^[a-zA-Z]\*$"
+  options:NSRegularExpressionAnchorsMatchLines
+  error:nil];
+
+  NSUInteger numberOfMatches = [regex
+  numberOfMatchesInString:[input text]
+  options:NSMatchingAnchored
+  range:NSMakeRange(0, [[input text] length])];
+
+  // If there is not a single match
+  // then return an error and NO
+  if (numberOfMatches == 0)
+  {
+  if (error != nil)
+  {
+  NSString *description = NSLocalizedString(@"Input Validation Failed", @"");
+  NSString *reason = NSLocalizedString(@"The input can only contain letters", @"");
+
+        NSArray *objArray = [NSArray arrayWithObjects:description, reason, nil];
+        NSArray *keyArray = [NSArray arrayWithObjects:NSLocalizedDescriptionKey,
+                             NSLocalizedFailureReasonErrorKey, nil];
+
+        NSDictionary *userInfo = [NSDictionary dictionaryWithObjects:objArray
+                                                             forKeys:keyArray];
+        *error = [NSError errorWithDomain:InputValidationErrorDomain
+                                     code:1002
+                                 userInfo:userInfo];
+      }
+
+      return NO;
+
+  }
+
+  return YES;
+  }
+
+@end
+{% endhighlight %}
+
+{% highlight ruby %}
+@interface CustomTextField : UITextField
+{
+@private
+InputValidator \*inputValidator\_;
+}
+
+@property (nonatomic, retain) IBOutlet InputValidator \*inputValidator;
+
+- (BOOL) validate;
+
+@end
+
+@synthesize inputValidator=inputValidator\_;
+
+- (BOOL) validate
+  {
+  NSError \*error = nil;
+  BOOL validationResult = [inputValidator_ validateInput:self error:&error];
+  if (!validationResult)
+  {
+  UIAlertView \*alertView = [[UIAlertView alloc] initWithTitle:[error localizedDescription]
+  message:[error localizedFailureReason]
+  delegate:nil
+  cancelButtonTitle:NSLocalizedString(@"OK", @"")
+  otherButtonTitles:nil];
+  [alertView show];
+  }
+  return validationResult;
+  }
+
+@end
+{% endhighlight %}

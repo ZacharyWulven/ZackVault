@@ -1,0 +1,250 @@
+---
+layout: post
+title: ### -2022-02-10-内存管理.markdown
+date: 2022-02-10 11:50:30.000000000 +09:00
+tag: OC 底层原理 内存管理
+---
+
+### Timer 循环引用
+CADisplayLink/Timer 的 target 会强引用 self，有循环引用问题。__weak self 不能解决 timer 强引用。
+   
+解决循环引用方案：
+
+* API scheduledtimerWithBlock
+* NSProxy 消息转发
+* 写 Timer 分类，target 指向 Timer 自己。见 52 条。
+
+### NSProxy 
+不继承 NSObject，与 NSObject 都是基类，继承自 NSProxy 没有 init 方法。NSProxy 设计做消息转发 -methodSignatureForSelector、 -forwardInvocation，消息转发效率更高，因为直接进行消息转发到 methodSignatureForSelector 不用去查找方法。
+
+{% highlight ruby %}
+ISZProxy *proxy = [ISZProxy alloc];
+
+- (NSMethodSignature *)methodSignatureForSelector:(SEL)sel {
+  return [self.target methodSignatureForSelector:sel];
+}
+
+- (void)forwardInvocation:(NSInvocation *)invocation {
+  [invocation invokeWithTarget:self.target];
+}
+{% endhighlight %}
+
+#### NSProxy isKindOfClass
+{% highlight ruby %}
+ISZProxy *iszProxy = [ISZProxy proxyWithTarget:self];
+MyProxy *myProxy = [MyProxy proxyWithTarget:self];
+NSLog(@"iszProxy %d, myProxy%d", [iszProxy isKindOfClass:[Courses class]], [myProxy isKindOfClass:[Courses class]]);
+iszProxy 1, myProxy0
+   
+- (BOOL) isKindOfClass: (Class)aClass {
+  NSMethodSignature  *sig;
+  NSInvocation    *inv;
+  BOOL      ret;
+
+  sig = [self methodSignatureForSelector: _cmd];
+  inv = [NSInvocation invocationWithMethodSignature: sig];
+  [inv setSelector: _cmd];
+  [inv setArgument: &aClass atIndex: 2];
+  [self forwardInvocation: inv];
+  [inv getReturnValue: &ret];
+  return ret;
+}
+{% endhighlight %}
+NSProxy isKindOfClass 源码在 gnustep-base，源码就是消息转发直接调用 methodSignatureForSelector，对 NSProxy 就直接转发了。
+
+
+### GCD 定时器
+CADisplayLink/NSTimer 底层基于 RunLoop 实现，如果 Runloop 任务繁多，会导致 Timer 不准，Runloop 每跑一圈，会计算下的时间看是否要触发 Timer，
+每跑一圈任务可能不一样，导致每圈下来时间不同，所以 Timer 不准。
+
+解决方案是使用 GCD 定时器，GCD 定时器准时，直接和系统内核挂钩，而且滑动 view 不影响 GCD timer。
+{% highlight ruby %}
+dispatch_source_t timer
+self.timer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, dispatch_get_main_queue());
+dispatch_source_set_timer(self.timer, DISPATCH_TIME_NOW, 1 * NSEC_PER_SEC, 1 * NSEC_PER_SEC);
+// 设置回调
+dispatch_source_set_event_handler(self.timer, ^{
+  NSLog(@"dispatch_source_t timer");
+});
+// 启动定时器
+dispatch_resume(self.timer);
+
+// cancel
+dispatch_source_cancel(timer)
+{% endhighlight %}
+
+### 内存布局
+地址从低到高
+
+* 保留
+* 代码段(__TEXT)
+* 数据段(__DATA)：地址从低到高，字符串常量/已初始化数据(全局变量，静态变量)/未初始化数据(全局变量，静态变量）
+* 堆(heap)：alloc, malloc，calloc 等动态分配，地址由低到高
+* 栈(stack)：函数调用开销，栈分配是由高到低分配
+* 内核区
+
+
+数据段(__DATA): 
+{% highlight ruby %}
+
+bss段（Block Started by Symbol segment）通常是指用来存放程序中未初始化的全局变量的一块内存区域，
+一般在初始化时 bss 段部分将会清零（bss 段属于静态内存分配，即程序一开始就将其清零了）。
+
+全局的未初始化变量存在于 bss 段中，具体体现为一个占位符，bss不占用可执行文件空间，
+其内容由操作系统初始化（清零），裸机程序需要自行手动清零。
+   
+而 data 段则需要占用可执行文件空间，其内容由程序初始化
+bss 段（未手动初始化的数据）并不给该段的数据分配空间，只是记录数据所需空间的大小。
+data段（已手动初始化的数据）为数据分配空间，数据保存在目标文件中
+{% endhighlight %}
+
+### Tagged Pointer
+64bit 开始，iOS 引入了 TaggedPointer 技术，用于优化 NSNumber、NSDate、NSString 等小对象存储，在没有 TaggedPointer 前 NSNumber 等对象需要动态分配内存、维护引用计数， NSNumber 指针存储堆中对象地址。使用 TaggedPointer 后，NSNumber 指针里存储：Tag + Data，也就是将数据直接存储在了指针中，当指针不够存储数据时才会使用动态分配内存方式来存储数据，objc_msgSend 能识别 TaggedPointer，比如 NSNumber 的 intValue 方法直接从指针中提取数据，节省调用开销。
+
+{% highlight ruby %}
+TaggedPointer 没有 isa 不是OC对象。
+TaggedPointer 对内存空间优化，调用开销的优化，不会 retain release，而是将数据直接存储在了指针中。
+{% endhighlight %}
+
+runtime 源码
+{% highlight ruby %}
+
+static inline bool
+_objc_isTaggedPointerOrNil(const void * _Nullable ptr) {
+    // this function is here so that clang can turn this into
+    // a comparison with NULL when this is appropriate
+    // it turns out it's not able to in many cases without this
+    return !ptr || ((uintptr_t)ptr & _OBJC_TAG_MASK) == _OBJC_TAG_MASK;
+}
+#   define _OBJC_TAG_MASK (1UL<<63)  // iOS 平台
+
+如何判断一个指针为TaggedPointer
+iOS 平台，最高有效位是1 （第 64bit） (1UL<<63)
+Mac 平台，最低有效位是1   1UL
+{% endhighlight %}
+
+Inter 平台低位设置为 1 表示 Tagged Pointer，接下来 3 位是标签号，用来表示 Tagged Pointer 类型， 如 3 表示它是一个 NSNumber， 6 为 NSDate，由于有 3 个标签位，所以有 8 种可能的标签类型，剩下的位是有效负载 payload ，这是特定类型可以随意使用的数据，对于 NSNumber 有些特殊，使用额外 8 位来作为扩展标签来编码类型，但是会减少 payload 空间。
+
+在 ARM 平台高位为标志位： 高位 1 位 Tagged Pointer ，同 Inter 平台一样，也是有扩展标签的。 为什么 ARM 平台是高位为 1 ？这是对 objc_msgSend 的一个小优化, 苹果希望 msgSend 中最常见的路径可以尽可能的快，而最常见的路径是一个普通指针。 当使用高位时候 可以通过一次比较对这两个进行检查。
+{% highlight ruby %}
+if (ptrValue <= 0) is Tagged Pointer Or nil，相对于两个分支检查 nil 和 tagged 这样就节省了一个条件分支。
+{% endhighlight %}
+
+### copy
+拷贝对象目的：产生一个副本对象，跟原对象互不影响。修改原对象不会影响副本对象，修改副本对象不会影响原对象。 
+#### 深拷贝和浅拷贝
+* 浅拷贝：指针拷贝，没有产生新对象
+* 深拷贝：内容拷贝，产生新对象
+
+{% highlight ruby %}
+mutable 对象进行 copy，mutableCopy 是深拷贝
+immutable 对象进行 copy，是浅拷贝 mutableCopy 是深拷贝
+Copy 产生不可变副本
+mutableCopy 产生可变副本
+{% endhighlight %}
+
+### 引用计数怎么存储
+在 64bit 架构中，引用计数可以直接存储在优化过的 isa 指针中，也可能存储在 SideTable 类中。
+{% highlight ruby %}
+struct SideTable {
+ spinlock_t slock;
+ RefcountMap refcnts; // 存放着对象引用计数的散列表，强引用表
+ weak_table_t weak_table;// 弱引用散列表
+}
+RefcountMap refcnts 用当前对象地址作为 key 取出
+{% endhighlight %}
+
+{% highlight ruby %}
+inline uintptr_t 
+objc_object::rootRetainCount()
+{
+    if (isTaggedPointer()) return (uintptr_t)this;
+
+    sidetable_lock();
+    isa_t bits = __c11_atomic_load((_Atomic uintptr_t *)&isa.bits, __ATOMIC_RELAXED);
+    if (bits.nonpointer) {                       // 优化过 isa
+        uintptr_t rc = bits.extra_rc;
+        if (bits.has_sidetable_rc) {             // 引用计数不存在 isa 中，存在 sidetable
+            rc += sidetable_getExtraRC_nolock();
+        }
+        sidetable_unlock();
+        return rc;
+    }
+
+    sidetable_unlock();
+    return sidetable_retainCount();
+}
+{% endhighlight %}
+
+   
+   
+### __weak 原理
+也是用散列表存储。 __weak weakObj = obj，以 obj 地址为 key，obj地址 & MASK = 散列表 index，取出对应的数据，删除弱引用后，也会清空 RefcountMap refcnts 里的数据。
+
+{% highlight ruby %}   
+inline void
+objc_object::rootDealloc()
+{
+    if (isTaggedPointer()) return;  // fixme necessary?
+
+    if (fastpath(isa.nonpointer                     &&
+                 !isa.weakly_referenced             &&
+                 !isa.has_assoc                     &&
+#if ISA_HAS_CXX_DTOR_BIT
+                 !isa.has_cxx_dtor                  &&
+#else
+                 !isa.getClass(false)->hasCxxDtor() &&
+#endif
+                 !isa.has_sidetable_rc))
+    {
+        assert(!sidetable_present());
+        free(this);
+    } 
+    else {
+        object_dispose((id)this);
+    }
+}
+
+void *objc_destructInstance(id obj) 
+{
+    if (obj) {
+        // Read all of the flags at once for performance.
+        bool cxx = obj->hasCxxDtor();
+        bool assoc = obj->hasAssociatedObjects();
+
+        // This order is important.
+        if (cxx) object_cxxDestruct(obj);
+        if (assoc) _object_remove_assocations(obj, /*deallocating*/true);
+        obj->clearDeallocating();                // 将指向当前对象的弱指针设置为 nil
+    }
+
+    return obj;
+}
+
+static weak_entry_t *
+weak_entry_for_referent(weak_table_t *weak_table, objc_object *referent)
+{
+    ASSERT(referent);
+
+    weak_entry_t *weak_entries = weak_table->weak_entries;
+
+    if (!weak_entries) return nil;
+
+    size_t begin = hash_pointer(referent) & weak_table->mask;   // 将弱引用存在哈希表
+    size_t index = begin;
+    size_t hash_displacement = 0;
+    while (weak_table->weak_entries[index].referent != referent) {
+        index = (index+1) & weak_table->mask;
+        if (index == begin) bad_weak_table(weak_table->weak_entries);
+        hash_displacement++;
+        if (hash_displacement > weak_table->max_hash_displacement) {
+            return nil;
+        }
+    }
+    
+    return &weak_table->weak_entries[index];
+}
+{% endhighlight %}
+
+### ARC帮我们做了什么？
+编译器 LLVM + Runtime 相互协作一个结果，编译器为我们插入 retain、release、weak 需要 runtime 支持。

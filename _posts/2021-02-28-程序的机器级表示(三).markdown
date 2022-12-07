@@ -1,0 +1,129 @@
+---
+layout: post
+title: 程序的机器级表示(三）
+date: 2021-02-28 23:45:30.000000000 +09:00
+categories: [CSApp]
+tags: [CSApp]
+---
+
+### 算术和逻辑操作
+
+大多数操作都分成指令类，这些指令类有各种带不同大小操作数的变种，每个指令类都有四种不同大小数据指令。
+{% highlight ruby %}
+只有 leaq 没有其他大小变种
+{% endhighlight %}
+
+例如：指令类 add 由四条加法指令组成
+
+1. addb 字节加法
+2. addw 字加法
+3. addl 双字加法
+4. addq 四字加法
+
+每个指令类都有对这四种不同大小数据的指令，分为四种：
+
+1. 加载有效地址
+2. 一元操作，有一个操作数
+3. 二元操作, 有两个操作数
+4. 移位
+
+{% highlight ruby %}
+指令 效果 描述
+leaq S, D D <- &S 加载有效地址
+
+INC D D <- D+1 加 1
+DEC D D <- D-1 减 1
+NEG D D <- -D 取负
+NOT D D <- ~D 取补
+
+ADD S, D D <- D + S 加
+SUB S, D D <- D - S 减
+IMUL S, D D <- D \* S 乘
+XOR S, D D <- D ^ S 异或
+OR S, D D <- D | S 或
+AND S, D D <- D & S 与
+
+SAL k, D D <- D << k 左移
+SHL k, D D <- D << k 左移（等同于 SAL）
+SAR k, D D <- D >>A k 算术右移
+SHR k, D D <- D >>L k 逻辑右移
+{% endhighlight %}
+
+{% highlight ruby %}
+加载有效地址 leaq 指令通常用来执行简单算术操作。>>A 表示算术右移。>>L 表示逻辑右移。
+{% endhighlight %}
+
+#### 加载有效地址 leaq (本质是把第一个操作数存入目的寄存器中)
+
+加载有效地址（load effective address）指令 leaq 实际上是 movq 指令的变形。它的指令形式是从内存读数据到寄存器，但实际上它根本就没有引用内存。它的第一个操作数看上去是一个内存引用，但该指令并不是从指定位置读入数据，而是将有效地址写入到目的操作数。它能执行加法和有限形式的乘法，是很有用的指令。
+{% highlight ruby %}
+这条指令可以为后面内存引用产生指针。目的必须是一个寄存器。
+{% endhighlight %}
+另外它还可以简洁描述普通算术操作。
+例如：%rdx 的值为 x，则 leaq 7(%rdx, %rdx, 4), %rax 就是将 %rax 值设置为 5x+7
+
+#### 一元和二元操作
+
+#### 一元操作
+
+只有一个操作数，即使源又是目的，这个操作数可以是寄存器，也可以是内存位置。例如指令 incq(%rsp) 会使栈顶的 8 个字节元素加 1。这种语法让人想起了 C 语言的 ++、-- 运算符。
+
+#### 二元操作
+
+第二个操作数即是源又是目的。这种语法让人想起了 C 语言的赋值运算符，例如 x -= y。源操作数是第一个，目的操作数是第二个。
+例如 subq %rax, %rdx 可以理解为 %rdx 值减去 %rax 值再存到 %rdx 中
+{% highlight ruby %}
+第一个操作数可以是立即数、寄存器、内存地址。
+第二个操作数可以是寄存器、内存地址。
+若第二个操作数是内存地址，处理器必须从内存读出值，执行操作，再把结果写回内存。
+{% endhighlight %}
+
+#### 位移操作
+
+先给出位移量，然后第二项给出要位移的数。位移量可以是一个立即数或放在单字节寄存器 %cl 中。这些指令很特别因为只允许以这个特定的寄存器作为操作数。1 个字节的位移量范围是 2^8 -1 = 255。
+在 x86-64 中，移位操作对 w 位长的数据值进行操作，移位量是由 %cl 寄存器低 m 位决定的，这里 2^m = w。高位被忽略，所以当 %cl 的十六进制值为 0xFF 时候，指令 salb 会移 7 位，salw 会移 15 位，sall 会移 31 位，salq 会移 63 位。
+
+左移指令 SAL 和 SHL 两个效果一样都是将右边填上 0。
+
+右移指令不同，SAR 执行算术右移（填上符号位），SHR 执行逻辑右移（填上 0）
+{% highlight ruby %}
+位移操作的目的操作数可以是寄存器或内存位置。
+{% endhighlight %}
+
+#### 特殊的算术操作
+
+Intel 把 16 字节数字称为八字（oct word）。两个 64 位有符号或无符号相乘乘积需要 128 位来表示。
+{% highlight ruby %}
+指令 效果 描述
+imulq S R[%rdx]: R[%rax] <- SxR[%rax] 有符号全乘法
+mulq S R[%rdx]: R[%rax] <- SxR[%rax] 无符号全乘法
+
+cqto R[%rdx]: R[%rax] <- 符号扩展(R[%rax]) 转为八字
+
+idivq S R[%rdx] <- R[%rdx]:R[%rax] mod S 有符号除法
+idivq S R[%rax] <- R[%rdx]:R[%rax] ➗ S 有符号除法
+
+divq S R[%rdx] <- R[%rdx]:R[%rax] mod S 无符号除法
+divq S R[%rax] <- R[%rdx]:R[%rax] ➗ S 无符号除法
+这些操作提供了又符号和无符号数全 128 位乘法和除法，一对寄存器 %rdx 和 %rax 组成一个 128 位的八字。
+{% endhighlight %}
+
+imulq 指令有两种不同形式，单操作数乘法指令，以两个 64 位值的全 128 位乘积，一个是 mulq 无符号乘法，另一个是 imulq（补码乘法）。这俩指令都要求一个参数必须在 %rax 中，而另一个作为指令的源操作数给出。然后乘积放在 %rdx（高 64 位） 和 %rax（低 64 位）中。
+
+{% highlight ruby %}
+x \* y
+movq %rsi, %rax
+mulq %rdx
+movq %rax, (%rdi) store lower 8 bytes
+movq %rdx, 8%rdi) store upper 8 bytes
+{% endhighlight %}
+
+除法
+
+有符号除法指令 idivl 将寄存器 %rdx（高 64 位） 和 %rax（低 64 位）中 128 位数作为被除数，除数作为指令操作数给出，
+商存在 %rax 中，余数存在 %rdx 中。
+
+cqto 不需要操作数，它隐含读出 %rax 的符号位，并将它复制到 %rdx 所有位。
+{% highlight ruby %}
+除法操作要使用 %rdx，所以如果入参用了 %rdx，要把入参保存到另一个寄存器如 %r8。
+{% endhighlight %}

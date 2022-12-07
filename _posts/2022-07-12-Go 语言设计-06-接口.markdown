@@ -1,0 +1,557 @@
+---
+layout: post
+title: Go 语言设计-06-接口
+date: 2022-07-12 16:45:30.000000000 +09:00
+tag: Go
+---
+
+
+
+接口类型是对其他类型行为的概况与抽象。Go 语言中接口的独特之处在于它是“隐式实现的”。
+即对于一个具体类型无须声明它实现了哪些接口，只需要提供接口所必需的方法即可。
+这种设计让你无须改变已有类型的实现，就可以为这些类型创建新的接口，对于那些不能修改的包类型，这一点很重要
+
+
+
+## 0x01 接口即约定
+接口类型是一种抽象类型，它并没有暴露所含数据的布局和内部结构，它仅仅是提供了一些方法。
+* fmt.Printf 把结果发到标准输出（标准输出其实是一个文件）
+* fmt.Sprintf 把结果以 string 类型返回
+* fmt.Fprintf 是通过接口实现的，而 Fprintf 对结果输出到哪里并不关心
+
+{% highlight ruby %}
+// Fprintf formats according to a format specifier and writes to w.
+// It returns the number of bytes written and any write error encountered.
+func Fprintf(w io.Writer, format string, a ...any) (n int, err error) {
+  p := newPrinter()
+  p.doPrintf(format, a)
+  n, err = w.Write(p.buf)
+  p.free()
+  return
+}
+
+// Printf formats according to a format specifier and writes to standard output.
+// It returns the number of bytes written and any write error encountered.
+func Printf(format string, a ...any) (n int, err error) {
+  return Fprintf(os.Stdout, format, a...)
+}
+
+{% endhighlight %}
+* Fprintf 的前缀 F 指文件，表示格式化输出会写入一个实参所指代的文件
+* 对于 Printf 第一个实参就是 os.Stdout，它属于 *os.File 类型
+* Fprintf 第一个形参是接口类型 io.Writer
+
+Fprintf 和 Fprintln 提供了一个让类型控制如何输出自己的机制
+
+{% highlight ruby %}
+Writer 从 p 向底层数据流写入 len(p) 个字节的数据
+返回从 p 写入的字节数(0<=n<=len(p))
+任何 error 会导致写入提前完成
+在 Writer 返回一个非 nil 的 err，如果   n<len(p) 
+Writer 不允许修改 p 的数据，即使是临时的
+
+// Implementations must not retain p.
+type Writer interface {
+  Write(p []byte) (n int, err error)
+}
+{% endhighlight %}
+
+实现 io.Write
+{% highlight ruby %}
+type ByteCounter int
+
+func (c *ByteCounter) Write(p []byte) (int, error) {
+  *c += ByteCounter(len(p)) // 转换 ByteCounter 为 int
+  return len(p), nil
+}
+
+  var c ByteCounter
+  c.Write([]byte("hello"))
+  fmt.Println(c) // 5
+
+  c = 0
+  name := "Dolly"
+  fmt.Fprintf(&c, "hello, %s", name)
+  fmt.Println(c) // 12
+{% endhighlight %}
+
+
+## 0x02 接口类型
+* Note：一个接口类型定义了一套方法，如果一个具体类型要实现该接口，那么必须实现接口类型定义中的所有方法。
+
+io 包还定义了很多有用的接口
+* Reader 抽象了所有可以读取字节的类型
+* Closer 抽象了所有可以关闭的类型
+
+通过组合（嵌套）已有接口得到新接口
+{% highlight ruby %}
+type ReadWriterCloser interface {
+  io.Reader
+  io.Writer
+  io.Closer
+}
+
+也可以混合使用
+type ReadWriter interface {
+  io.Reader
+  Write(p []byte) (n int, err error)
+}
+重要的不是用不用嵌套，重要的是接口的方法集合
+{% endhighlight %}
+
+## 0x03 实现接口
+* Note：如果一个类型实现了一个接口要求的所有方法，那么这个类型实现了这个接口。
+* 通常一个具体类型“是一个”特定接口类型，代表该具体类型实现了该接口，例如 *bytes.Buffer 是一个  io.Writer
+{% highlight ruby %}
+接口赋值，仅当一个表达式实现了一个接口时，这个表达式才可以赋值给该接口
+总结：即右边实现的要比左边要求的多
+
+  var w io.Writer
+  w = os.Stdout
+  w = new(bytes.Buffer)
+  //w = time.Second // 编译报错
+  fmt.Println(w)
+
+  var rwc io.ReadWriteCloser
+  rwc = os.Stdout
+  //  rwc = new(bytes.Buffer) // 编译报错
+  fmt.Println(rwc)
+  w = rwc
+  //rwc = w  // 编译报错
+{% endhighlight %}
+
+需要变量的时候
+{% highlight ruby %}
+type IntSet struct {
+}
+
+func (s *IntSet) String() string {
+  return fmt.Sprintf("%s", *s)
+}
+
+  //var _ = IntSet{}.String() 编译报错，因为不是变量，编译器不能隐私转换
+
+  var s IntSet
+  var _ = s.String()
+
+  var _ fmt.Stringer = &s
+  var _ fmt.Stringer = s // 编译报错 
+{% endhighlight %}
+
+### 空接口类型 interface{}
+* Note：正因为空接口对其实现类型没有任何要求，所以我们可以把任何值赋给空接口类型
+{% highlight ruby %}
+  var any interface{}
+  any = true
+  any = 12.34
+  any = "hello"
+  any = map[string]int{"one": 1}
+  any = new(bytes.Buffer)
+{% endhighlight %}
+即使我们创建了一个布尔值、浮点数、字符串、map 等类型的 interface 接口，也无法直接使用其中的值，因为这个接口不包括任何类型。
+我们需要一个方法从空接口中还原出实际值，可使用类型断言来实现
+
+非空的接口通常由一个指针类型来实现
+
+
+## 0x04 使用 flag.Value 来解析参数
+{% highlight ruby %}
+var period = flag.Duration("period", 3*time.Second, "sleep period")
+
+func main() {
+  flag.Parse()
+  fmt.Printf("Sleeping for %v...", *period)
+  time.Sleep(*period)
+  fmt.Println()
+}
+
+可以通过 -period 命令进行时间控制
+$ ./sleep -period 500ms
+{% endhighlight %}
+
+flag.Value 接口
+{% highlight ruby %}
+type Value interface {
+  String() string  用于格式化对应值，有了此方法 flag.Value 也就可看成 fmt.Stringer 
+  Set(string) error 解析传入的字符串参数并更新标志值，可认为是 String() 的逆操作
+}
+{% endhighlight %}
+
+## 0x05 接口值
+一个接口类型的值称为接口值，包含两个部分；二者称为接口的动态类型和动态值
+1. 一个具体类型
+2. 该类型的一个值
+
+{% highlight ruby %}
+对于 Go 这样的静态语言，类型仅仅是一个编译时的概念，所以类型不是一个值
+
+{% endhighlight %}
+
+{% highlight ruby %}
+接口的零值就是把它的动态类型和值都设置为 nil
+Note 一个接口的值是否是 nil 取决于它的动态类型
+可以用 w == nil 来检测是否是 nil，调用一个 nil 接口的任何方法都会导致 crash
+
+var w io.Writer   动态类型和值都是 nil，是一个 nil 接口值  
+  
+这次赋值把一个具体类型隐式转换为一个接口类型,对应的显示转换 io.Writer(os.Stdout)
+接口值的动态类型会设置为指针类型 *os.File 类型描述符
+动态值设置为 os.Stdout 的副本，即一个指向代表进程的标准输出的 os.File 类型的指针
+调用给接口的值的 Write 方法，实际调用 (*os.File).Write 方法
+一般，在编译时我们无法知道一个接口值的动态类型会是什么，所以通过接口来做调用必然需要使用动态分发，
+编译器必须生成一段代码来从类型描述符拿到名为 Write 的方法地址，再间接调用该方法地址，
+调用的接收者就是接口值的动态值，即 os.Stdout
+w = os.Stdout  
+ 
+现在动态类型是 *bytes.Buffer，动态值则是一个指向新分区缓冲区的指针
+类型描述符是 *bytes.Buffer
+w = new(bytes.Buffer)
+
+动态类型和动态值都是 nil
+w = nil
+{% endhighlight %}
+
+接口值可以用 == 或 != 操作符来做比较。如果两个接口值都是 nil 或二者动态类型相同并且二者动态值相等可以用 == 比较，所以也可以作为 map 的 key 或
+switch 语句的操作数。但是如果两个接口的动态类型一致，但对应动态值不可比较，那么进行比较会 crash
+{% highlight ruby %}
+  var xx interface{} = []int{1, 2, 3}
+  fmt.Println(xx == xx)  会 crash
+{% endhighlight %}
+
+接口是否可比较不是绝对的，像基础类型和指针是完全可比较的，slice、map、函数是完全不可比较的。接口是否可比较要确认其接口值的动态值。
+
+### Note 含义空指针的非空接口
+空的接口值（其中不包含任何信息）与仅仅动态值为 nil 的接口值是不一样的。
+
+{% highlight ruby %}
+const debug = false
+
+func f(out io.Writer) {
+  out 是一个空指针的非空接口，想不 crash 需要把 main 函数里 var buf *bytes.Buffer 
+  改成 var buf io.Writer
+  if out != nil {  
+    out.Write([]byte("done!\n"))
+  }
+}
+
+func main() {
+
+  var buf *bytes.Buffer
+  if debug {
+    buf = new(bytes.Buffer) // 启用输出收集
+  }
+  f(buf)      debug = false 时会 crash 
+}
+{% endhighlight %}
+
+## 0x06 使用 sort.Interface 来排序
+Go 语言中 sort.Sort  函数对序列和其中元素布局无任何要求，它使用 sort.Interface 接口来指定通用排序算法和每个具体的序列类型之间的协议。
+
+一个原地排序算法需要知道三个信息
+1. 序列长度
+2. 比较两个元素的含义
+3. 如何交换两个元素
+
+{% highlight ruby %}
+类型实现这个接口即可实现排序
+type Interface interface {
+  // Len is the number of elements in the collection.
+  Len() int
+
+  Less(i, j int) bool
+
+  // Swap swaps the elements with indexes i and j.
+  Swap(i, j int)
+}
+{% endhighlight %}
+sort 包提供了 StringSlice 类型以及一个直接排序的 Strings 函数
+
+sort 提供了 []int、[]string 等自然排序函数
+{% highlight ruby %}
+  values := []int{3, 2, 5, 4, 1}
+  sort.Ints(values)
+  fmt.Println(values)
+  fmt.Println(sort.IntsAreSorted(values))
+{% endhighlight %}
+
+## 0x07 使用 http.Handler 接口
+{% highlight ruby %}
+http1.go
+
+package main
+
+import (
+  "fmt"
+  "log"
+  "net/http"
+)
+
+type dollars float64
+
+type database map[string]dollars
+
+func (d dollars) String() string {
+  return fmt.Sprintf("$%.2f", d)
+}
+
+func (db database) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+  for item, price := range db {
+    fmt.Fprintf(w, "%s: %s\n", item, price)
+  }
+}
+
+func main() {
+  db := database{"shoes": 50, "socks": 5}
+  log.Fatal(http.ListenAndServe("localhost:8080", db))
+}
+
+$./http1 & 启动服务器
+{% endhighlight %}
+
+{% highlight ruby %}
+fetch.go
+
+package main
+
+import (
+  "fmt"
+  "io/ioutil"
+  "net/http"
+  "os"
+)
+
+func main() {
+
+  for _, url := range os.Args[1:] {
+    resp, err := http.Get(url)
+    if err != nil {
+      fmt.Fprintf(os.Stderr, "fetch: %v\n", err)
+      os.Exit(1)
+    }
+
+    b, err := ioutil.ReadAll(resp.Body)
+    resp.Body.Close()
+    if err != nil {
+      fmt.Fprintf(os.Stderr, "fetch: reading %s: %v\n", url, err)
+      os.Exit(1)
+    }
+    fmt.Printf("%s", b)
+
+  }
+
+}
+$./fetch http://localhost:8080
+{% endhighlight %}
+
+net/http 包提供了一个请求多工转发器 ServeMux，用来简化 URL 和处理程序之间的关联，一个 ServeMux 可以把多个 http.Handler 组合成单个 http.Handler。
+
+{% highlight ruby %}
+http3.go
+
+type dollars float64
+
+type database map[string]dollars
+
+func (d dollars) String() string {
+  return fmt.Sprintf("$%.2f", d)
+}
+
+func (db database) list(w http.ResponseWriter, req *http.Request) {
+  for item, price := range db {
+    fmt.Fprintf(w, "%s: %s\n", item, price)
+  }
+}
+
+func (db database) price(w http.ResponseWriter, req *http.Request) {
+  item := req.URL.Query().Get("item")
+  price, ok := db[item]
+  if !ok {
+    w.WriteHeader(http.StatusNotFound)
+    fmt.Fprintf(w, "no such item: %q\n", item)
+    return
+  }
+  fmt.Fprintf(w, "%s\n", price)
+}
+
+func main() {
+  db := database{"shoes": 50, "socks": 5}
+  //mux := http.NewServeMux()
+  // http.HandlerFunc 是一个类型, 而且拥有自己的方法，也满足 http.Handler 接口
+  // 它的 ServeHTTP 方法就调用函数本身
+
+  //mux.Handle("/list", http.HandlerFunc(db.list))
+  //mux.Handle("/price", http.HandlerFunc(db.price))
+  // 或写成
+  //mux.HandleFunc("/price", db.price)
+
+  http.HandleFunc("/list", db.list)
+  http.HandleFunc("/price", db.price)
+
+  /*
+      net/http 包提供一个全局的 ServeMux 实例 DefaultServeMux，以及包级别的
+    注册函数 http.Handle 和 http.HandleFunc，
+    要让 DefaultServeMux 作为服务器的主处理程序，无须把它传给 ListenAndServe
+  */
+  log.Fatal(http.ListenAndServe("localhost:8080", nil))
+
+}
+{% endhighlight %}
+
+## 0x08 error 接口
+error 是一个接口类型，构造 error 最简单方式是调用 errors.New，它返回一个包含指定错误消息的新 error 实例。
+
+{% highlight ruby %}
+func New(text string) error {
+  return &errorString{text}
+}
+
+// errorString is a trivial implementation of error.
+type errorString struct {
+  s string
+}
+
+func (e *errorString) Error() string {
+  return e.s
+}
+{% endhighlight %}
+* errorString 是一个结构
+* 满足 error 接口的是 *errorString 指针，而不是原始的 errorString 类型，
+主要是为了让每次 New 分配的 error 实例都互不相等
+
+{% highlight ruby %}
+fmt.Println(errors.New("EOF") == errors.New("EOF")) // false
+{% endhighlight %}
+
+Note 通常使用 fmt.Errorf 而不是 errors.New
+
+还有 syscall 包提供了 Go 的底层系统调用 API，在很多平台它也定义了一个满足 error 接口的数字类型 Errno
+{% highlight ruby %}
+$go test -v xxx.go // -v 选项可以看到测试的输出
+{% endhighlight %}
+
+## 0x09 类型断言
+* 类型断言是一个作用在接口值上的操作，写出来类似 x(T), x 是一个接口类型的表达式，而 T 是一个类型(断言类型)
+* 类型断言会检测作为操作数的动态类型是否满足指定的断言类型，即 x 是否满足 T
+* 这有两个可能 
+1. 如果断言类型 T 是一个具体类型，那么类型断言会检查 x 的动态类型是否就是 T，
+如果检查成功，类型断言结果就是 x 的动态值，类型也就是 T。换句话说，类型断言就是用来从它的操作数中把具体类型的值提取出来的操作。
+如果检测失败，那么会崩溃。
+2. 如果断言类型 T 是一个接口类型，那么类型断言 x 的动态类型是否满足 T。如果检查成功，动态值并没有提取出来，结果仍是一个接口值，
+接口值的类型和值部分也没有变更，只是结果类型为接口类型 T。即类型断言是一个接口值表达式，从一个接口类型变为拥有另外一套方法的接口类型（
+通常方法数量是增多的），但保留了接口值中的动态类型和动态值部分。
+{% highlight ruby %}
+case 1
+var w io.Writer
+w = os.Stdout
+f := w.(*os.File)  // 成功： f == os.Stdout，T = os.File，f 就是 os.Stdout，提取 w 的值
+c := w.(*bytes.Buffer) // 崩溃：接口持有的是 *os.File，而不是 *bytes.Buffer
+
+
+case 2
+var w io.Writer
+w = os.Stdout
+// T = io.ReadWriter， f 是 io.ReadWriter ，io.Writer->io.ReadWriter
+rw := w.(io.ReadWriter) //成功： *os.File 有了 Read 和 Write 方法
+  
+w = new(ByteCounter)
+rw = w(io.ReadWriter()) // 崩溃 ByteCounter 没有 Read 方法
+  
+
+无论哪种类型作为断言类型，如果操作数是一个空接口值，类型断言都失败
+w = rw
+w = rw.(io.Writer) // 仅当 rw == nil 时失败
+{% endhighlight %}
+
+很少需要从一个接口类型向一个要求更宽松的类型做类型断言，该宽松类型接口方法比原类型少，而且是其子集。除了在操作 nil 外，其他情况下这种操作与赋值一致。
+{% highlight ruby %}
+{% endhighlight %}
+
+{% highlight ruby %}
+Note 如果类型断言出现在需要两个结果的赋值表达式中，那么断言不会再失败时崩溃，而是会多返回一个布尔型用来指示断言是否成功
+var w io.Writer = os.Stdout
+f, ok := w.(*os.File)   // 成功： ok，f == os.Stdout
+b, ok1 := w.(*bytes.Buffer) // 失败 !ok, b is nil
+
+改成更紧凑的代码
+var w io.Writer = os.Stdout
+
+if f, ok := w.(*os.File); ok {
+  println("f is", f)
+}
+{% endhighlight %}
+
+## 0x0A 使用类型断言来识别错误
+I/O 会因为很多原因失败，有三类原因通常必须单独处理
+* 文件已存储（创建操作）
+* 文件没找到（读取操作）
+* 权限不足
+
+os 包提供了三个帮助函数用来对错误进行分类
+{% highlight ruby %}
+func IsExist(err error) bool
+func IsNotExist(err error) bool
+func IsPermission(err error) bool 
+{% endhighlight %}
+
+* os 包定义了一个 PathError 类型来表示在与一个文件路径相关的操作上发生错误（比如 open 或 delete）
+* 一个类似 LinkError 用来表述在与两个文件路径相关的操作上发生错误（Symlink 和 Rename）
+{% highlight ruby %}
+_, err := os.Open("/no/such/files")
+fmt.Println(err)   // open /no/such/files: no such file or directory
+fmt.Printf("%#v\n", err)  // &fs.PathError{Op:"open", Path:"/no/such/files", Err:0x2}
+  
+fmt.Println(os.IsNotExist(err)) // true
+{% endhighlight %}
+如果错误消息已被 fmt.Errorf 这类方法合并到一个大字符串中，那么 PathError 的结构信息就丢失了。
+错误失败通常必须在失败操作发生时马上处理，而不是等到错误消息返回给调用者之后。
+
+## 0x0B 通过接口类型断言来查询特性
+{% highlight ruby %}
+func writeString(w io.Writer, s string) (n int, err error) {
+  type stringWriter interface {  
+    WriteString(string) (n int, err error)
+  }
+  if sw, ok := w.(stringWriter); ok {  检查是否实现了 WriteString 方法，如果实现直接调用
+    return sw.WriteString(s) // 避免了内存复制
+  }
+  return w.Write([]byte(s)) // 分配了临时内存
+}
+{% endhighlight %}
+
+## 0x0C 类型分支
+接口有两种不同的风格
+1. 典型的比如 io.Reader、io.Writer 它们接口上各种方法突出了满足这个接口的具体类型之间的相似性，但隐藏了各个具体类型的布局和各自特有的功能，
+这种风格强调了方法而不是具体类型。在面向对象上称为子类型多态。
+2. 可识别的联合：充分利用了接口值能够容纳各种具体类型的能力，它把接口作为这些类型的联合（union）来使用，这种风格强调满足这个接口的具体类型而不是方法。
+在面向对象上称为特设多态。
+
+### 
+* 与普通分支语句差别是操作数改为 x.(type)
+* nil 分支需要 x == nil
+* 类型分支不允许使用 fallthrough
+* 可识别联合类型很少有方法，操作它的函数经常会使用类型 switch
+{% highlight ruby %}
+func sqlQuote(x interface{}) string {
+  switch x := x.(type) {
+  case nil:
+    return "NULL"
+  case int, uint:
+    return fmt.Sprintf("%d", x) // 这里 x 类型为 interface{}
+  case bool:
+    if x {
+      return "TRUE"
+    }
+    return "FALSE"
+  case string:
+    return fmt.Sprintf("%s, %[1]T, %[1]v", x)
+  default:
+    panic(fmt.Sprintf("unexpected type %T: %v", x, x))
+  }
+}
+{% endhighlight %}
+
+
+## Note 0x0D 一些建议
+* 可以使用导出机制来限制一个类型的哪些方法或结构体的哪些字段是对包外可见的。仅在有两个或多个具体类型需要按统一的方式处理时才需要接口
+* 接口是解耦两个包的好方式
+* 仅要求你需要的来设计接口

@@ -1,0 +1,193 @@
+---
+layout: post
+title: 设计模式之工厂方法(对象创建)
+date: 2021-02-09 00:14:30.00000000 +09:00
+categories: [iOS, 设计模式]
+tags: [iOS, 设计模式]
+---
+
+### 何为工厂方法
+
+一个类无法预期需要生成哪个类的对象，想让其子类来指定所生成的对象。
+
+### 模式
+
+定义工厂方法创建对象的接口，让子类决定实例化哪个类。工厂方法使得一个类的实例化延迟到其子类。工厂方法专注于让子类决定创建什么对象。
+{% highlight ruby %}
+有一种变体，抽象类使用工厂方法创建其私有子类或任何其他类的对象。
+{% endhighlight %}
+
+### 何时使用
+
+1. 编译时无法预期要创建的对象的类。
+2. 类想让其子类决定在运行时创建什么。
+3. 类有若干子类，而你想返回哪个子类这一信息局部化。
+
+### 代码
+
+Generator
+
+{% highlight ruby %}
+@interface CanvasViewGenerator : NSObject
+
+- (CanvasView \*) canvasViewWithFrame:(CGRect) aFrame;
+
+@end
+
+@implementation CanvasViewGenerator
+
+- (CanvasView \*) canvasViewWithFrame:(CGRect) aFrame
+  {
+  return [[[CanvasView alloc] initWithFrame:aFrame] autorelease];
+  }
+
+@end
+
+@interface PaperCanvasViewGenerator : CanvasViewGenerator
+
+- (CanvasView \*) canvasViewWithFrame:(CGRect) aFrame;
+
+@end
+
+@implementation PaperCanvasViewGenerator
+
+- (CanvasView \*) canvasViewWithFrame:(CGRect) aFrame
+  {
+  return [[[PaperCanvasView alloc] initWithFrame:aFrame] autorelease];
+  }
+
+@end
+
+@interface ClothCanvasViewGenerator : CanvasViewGenerator
+{
+
+}
+
+- (CanvasView \*) canvasViewWithFrame:(CGRect) aFrame;
+
+@end
+
+@implementation ClothCanvasViewGenerator
+
+- (CanvasView \*) canvasViewWithFrame:(CGRect) aFrame
+  {
+  return [[[ClothCanvasView alloc] initWithFrame:aFrame] autorelease];
+  }
+
+@end
+
+{% endhighlight %}
+
+Views
+
+{% highlight ruby %}
+@protocol Mark;
+
+@interface CanvasView : UIView
+{
+@private
+id <Mark> mark\_; // the main stroke structure
+}
+
+@property (nonatomic, retain) id <Mark> mark;
+
+@end
+
+@implementation CanvasView
+
+@synthesize mark=mark\_;
+
+- (id)initWithFrame:(CGRect)frame
+  {
+  if ((self = [super initWithFrame:frame]))
+  {
+  // Initialization code
+  [self setBackgroundColor:[UIColor whiteColor]];
+  }
+  return self;
+  }
+
+// Only override drawRect: if you perform custom drawing.
+// An empty implementation adversely affects performance during animation.
+
+- (void)drawRect:(CGRect)rect
+  {
+  // Drawing code
+  CGContextRef context = UIGraphicsGetCurrentContext();
+  // create a renderer visitor
+  MarkRenderer \*markRenderer = [[[MarkRenderer alloc] initWithCGContext:context] autorelease];
+  // pass this renderer along the mark composite structure
+  [mark_ acceptMarkVisitor:markRenderer];
+
+}
+
+@interface ClothCanvasView : CanvasView
+{
+
+// some private variables.
+}
+
+// some other specific behaviors.
+
+@end
+
+@implementation ClothCanvasView
+
+- (id)initWithFrame:(CGRect)frame
+  {
+  if ((self = [super initWithFrame:frame]))
+  {
+  // Add a cloth image view on top
+  // as the canvas background
+  UIImage *backgroundImage = [UIImage imageNamed:@"cloth"];
+  UIImageView *backgroundView = [[[UIImageView alloc]
+  initWithImage:backgroundImage]
+  autorelease];
+  [self addSubview:backgroundView];
+  }
+  return self;
+  }
+
+// implementation for other behaviors
+
+@end
+
+@interface PaperCanvasView : CanvasView
+{
+// some private variables.
+}
+
+// some other specific behaviors.
+
+@end
+
+@implementation PaperCanvasView
+
+- (id)initWithFrame:(CGRect)frame
+  {
+  if ((self = [super initWithFrame:frame]))
+  {
+  // Add a paper image view on top
+  // as the canvas background
+  UIImage *backgroundImage = [UIImage imageNamed:@"paper"];
+  UIImageView *backgroundView = [[[UIImageView alloc]
+  initWithImage:backgroundImage]
+  autorelease];
+  [self addSubview:backgroundView];
+  }
+  return self;
+  }
+
+// implementation for other behaviors
+
+@end
+
+{% endhighlight %}
+
+### NSNumber 类工厂方法
+
+抽象类用它生成具体子类，它们不是被 NSNumber 私有子类重载，而是 NSNumber 创建合适对象的便利方式。
+
+### 总结
+
+工厂方法从代码中消除了对应用程序特有类的耦合。只需要处理创建对象抽象接口。

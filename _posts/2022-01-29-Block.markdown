@@ -1,0 +1,234 @@
+---
+layout: post
+title: Block
+date: 2022-01-29 19:00:30.000000000 +09:00
+categories: [iOS, 底层原理, Block]
+tags: [ObjC, 底层原理, Block]
+---
+
+### 什么是 Block
+
+block 本质是一个结构体对象，也是一个 OC 对象，它有一个 isa 指针。block 封装了函数调用以及函数调用环境（如参数）的 OC 对象，封装了函数地址、参数等。
+每个 block 封装成 struct \_\_方法名称\_block_impl_0 结构体，真正调用是 block->FuncPtr(block)
+
+源码分析
+
+{% highlight ruby %}
+ struct \_\_block_impl {
+  void *isa;
+  int Flags;
+  int Reserved;
+  void *FuncPtr; // 真正调用的函数
+};
+
+struct **main_block_impl_0 {
+  struct **block_impl impl;
+  struct **main_block_desc_0\* Desc;
+  **main_block_impl_0(void *fp, struct \_\_main_block_desc_0 *desc, int flags=0) { // 结构体构造函数
+    impl.isa = &\_NSConcreteStackBlock;
+    impl.Flags = flags;
+    impl.FuncPtr = fp;
+    Desc = desc;
+  }
+};
+
+static void **main_block_func_0(struct **main*block_impl_0 *\_\_cself, int a, int b) { // 就是 impl->FuncPtr
+NSLog((NSString \_)&**NSConstantStringImpl**var_folders_70_5wpd8v2s40g1g0jxm0x_13hc0000gn_T_main_34dfc2_mi_0, a, b);
+}
+
+static struct **main_block_desc_0 {
+  size_t reserved;
+  size_t Block_size;
+} **main*block_desc_0_DATA = { 0, sizeof(struct \*\*main_block_impl_0)};
+int main(int argc, const char * argv[]) {
+    /\_ @autoreleasepool \*/ { \*\*AtAutoreleasePool \_\_autoreleasepool;
+
+// void (*block)(void) = &结构体
+      void (*block)(int, int) = ((void (_)(int, int))&\_\_main_block_impl_0((void _)**main_block_func_0, &**main_block_desc_0_DATA));
+
+// Block->FuncPtr(block)
+      ((void (_)(\_\_block_impl _, int, int))((**block_impl \*)block)->FuncPtr)((**block_impl \*)block, 10, 20);
+    }
+    return 0;
+}
+{% endhighlight %}
+
+### 捕获变量机制
+
+捕获变量机制是为保证 block 能正常访问外部变量。局部变量，跨函数肯定要捕获。局部变量是 auto，auto 是作用域离开 } 就自动销毁了。
+局部变量需要捕获是因为跨函数访问，全局变量那个函数都可以方法所以可以直接访问。
+
+{% highlight ruby %}
+捕获不捕获 重点要看是局部变量还是全局变量
+
+捕获到 block 里   访问方式 捕获形式
+局部变量 auto       YES        值传递 如 int 捕获就按 int 捕获
+      static     YES         引用传递 如 int 捕获就按 int\* 捕获
+全局变量             NO         直接访问  
+{% endhighlight %}
+
+源码分析
+{% highlight ruby %}
+struct **main_block_impl_0 {
+  struct **block_impl impl;
+  struct \_\_main_block_desc_0\* Desc;
+  int age; // 捕获方式 值传递
+
+int *height;
+  \_\_main_block_impl_0(void *fp, struct \_\_main*block_desc_0 \_desc, int \_age, int *\_height, int flags=0) : age(\_age), height(\_height) {
+    impl.isa = &\_NSConcreteStackBlock;
+    impl.Flags = flags;
+    impl.FuncPtr = fp;
+    Desc = desc;
+  }
+};
+
+static void **main_block_func_0(struct **main\*block*impl_0 **\*cself) {
+  int age = **cself->age; // bound by copy
+  int \_height = **cself->height; // bound by copy
+  NSLog((NSString \*)&**NSConstantStringImpl\_\_var_folders_70_5wpd8v2s40g1g0jxm0x_13hc0000gn_T_main_2e20f6_mi_0, age, (\*height), width*, price);
+}
+
+static struct **main_block_desc_0 {
+  size_t reserved;
+  size_t Block_size;
+} **main_block_desc_0_DATA = { 0, sizeof(struct \_\_main_block_impl_0)};
+
+int main(int argc, const char _ argv[]) {
+    /_ @autoreleasepool */ { **AtAutoreleasePool **autoreleasepool; 
+      int age = 10;
+      static int height = 10;
+      // age 捕获时候值是 10
+      void (*block)(void) = ((void (_)())&\_\_main_block_impl_0((void _)**main_block_func_0, &**main_block_desc_0_DATA, age, &height));
+
+age = 20;
+      height = 20;
+      width\_ = 30;
+      price = 40;
+      ((void (_)(\_\_block_impl _))((**block_impl \*)block)->FuncPtr)((**block_impl \*)block);
+    }
+    return 0;
+}
+{% endhighlight %}
+
+### Block 类型
+
+block 类型 3 种, 可以通过调用 class 或 isa 指针查看具体类型, 以及继承关系
+
+1. **NSGlobalBlock** : NSBlock : NSObject， 没访问 auto 局部变量, 可访问 static 或全局变量
+2. **NSStackBlock**  : NSBlock : NSObject， 访问了 auto 局部变量
+3. **NSMallocBlock** : NSBlock : NSObject， 只有 **NSStackBlock** 进行了 copy
+
+各类型存放位置
+
+1. Text 段：（代码段 存放代码 地址比较小） 内存比较小
+2. Data 段： 数据段，放全局变量，NSGlobalBlock
+3. 堆 段： 放 alloc 出来的对象，NSMallocBlock
+4. 栈 段： 放局部（自动）变量，自动分配内存自动管理，NSStackBlock
+
+{% highlight ruby %}
+需要 Build Settings 禁用 ARC 才能打印 NSStackBlock
+{% endhighlight %}
+
+每一种类型 block 调用 copy 结果
+
+1. **NSStackBlock** => **NSMallocBlock**
+2. **NSGlobalBlock** => do nothing
+3. **NSMallocBlock** => 引用计数+1
+
+### Block Copy
+
+栈 block copy 到堆时候调用 block 内部 copy 函数，例如 **main_block_copy_0， **main_block_copy_0 里调用 \_Block_object_assign 函数。
+堆 block 被废弃时候，调用 block 内部 desc 的 dispose 函数
+
+{% highlight ruby %}
+static struct **main_block_desc_0 {
+     size_t reserved;
+     size_t Block_size;
+// 只有 copy 到堆才有 (*copy） (*dispose)
+     void (\*copy)(struct **main*block_impl_0*, struct \_\_main_block_impl_0*);
+     void (\_dispose)(struct \_\_main_block_impl_0*);
+} **main_block_desc_0_DATA = { 0, sizeof(struct **main_block_impl_0), **main_block_copy_0, **main_block_dispose_0};
+{% endhighlight %}
+
+ARC 环境下 编译器会根据情况自动将栈上 block 复制到堆
+
+1. block 作为函数返回值
+2. 将 block 复制给 \_\_strong 指针(强指针)
+3. block 作为 Cocoa API 方法名含有 usingBlock 的方法参数时
+4. block 作为 GCD 的 AP I 的方法参数时
+
+block 在栈上时访问了对象类型时 auto 变量时，不会强引用 auto、\_\_block 变量
+
+如果 block 被 copy 到堆上了，即 **NSStackBlock** Copy=> **NSMallocBlock** 时，
+block 会调用 **main_block_copy_0 函数，而 block 内部调用 copy 函数(**main_block_copy_0) 内部会调用 \_Block_object_assign 函数，\_Block_object_assign 会根据 auto 变量的修饰符作相应操作，
+分两种情况:
+
+1. 普通变量 \_Block_object_assign 函数会根据 auto 变量的修饰符(**weak,**strong,\_\_unsafe_unretained)做出相应操作
+2. **block 变量，block 会把捕获的 **block 变量包装成 **Block_byref_age_0 结构体对象。block 总是强引用 **Block*byref_age_0，但 **Block_byref_age_0 里边的变量如果是对象类型按捕获时候的修饰符而定，如果是普通变量则是直接持有。即 \_Block_object_assign 函数会对 **block 变量（**Block_byref_age_0）形成强引用（retain）\_Block_object_assign => retain，**Block_byref* 对对象强引用 Only in ARC。MRC 可用 \_\_block 代替弱引用。
+
+{% highlight ruby %}
+struct **Block_byref_age_0 {
+     void \***isa;
+   **Block_byref_age_0 \***forwarding; //指向**Block_byref_age_0 自己
+    int **flags;
+    int \_\_size;
+    int age;  //外部 age 的值
+
+//若用 **block **weak 一起修饰变量则有 **Block_byref_id_object_copy，dispose 函数
+    void (\***Block*byref_id_object_copy)(void*, void*)
+    void (*\_\_Block*byref_id_object_dispose)(void*)
+    Person \*\_\_weak weakPerson
+};
+{% endhighlight %}
+
+如果 block 从堆上移除会调用 block 内部的 dispose 函数，dispose 函数内部会调用 \_Block_object_dispose 函数,
+分两种情况:
+
+1. 普通变量 \_Block_object_dispose 函数会自动释放引用的 auto 变量，类似 release。
+2. **block 变量 \_Block_object_dispose 函数会自动释放 **block 变量（**Block_byref_age_0 ），而 **Block_byref_age_0 里边也会调 dispose 函数对引用的对象释放，
+   \_Block_object_dispose => release
+
+#### \_\_forwarding 指针
+
+**forwarding 其实是指向堆上的自己的地址。block copy 时候，会把 block 里使用的 **block 的变量也会 copy 到堆上
+
+栈 **forwarding 指向堆的 **Block_byref_age_0 地址，堆 **Block_byref_age_0 的 **forwarding 指向堆 **Block_byref_age_0 自己的地址。
+所以访问最后是 age->**forwarding->age = newValue。
+
+{% highlight ruby %}
+struct **main_block_impl_0 \*blockImpl = (**bridge struct \_\_main_block_impl_0 \*)block3;
+
+// 此 age 地址是 \_\_Block_byref_age_0 里的 age 变量地址
+NSLog(@"&age=%p", &age);
+
+2022-01-28 16:59:37.005782+0800 LorenCity[6149:6351477] &age=0x107304928
+Printing description of blockImpl->age:
+(**Block_byref_age_0 \*) age = 0x0000000107304910
+Printing description of blockImpl->age->age:
+(int) age = 10
+(lldb) p/x blockImpl->age
+(**Block*byref_age_0 *) $0 = 0x0000000107304910
+(lldb) p/x blockImpl->age->age
+(int) $1 = 0x0000000a
+(lldb) p/x &(blockImpl->age->age)
+(int \_) $3 = 0x0000000107304928
+{% endhighlight %}
+
+### 内存管理
+
+1. MRC 中 **block 不会造成 **Block_byref 结构体强引用变量，可以用来解决循环引用
+2. ARC 中 **block 会造成 **Block_byref 对对象强引用
+
+### 小结
+
+1. 栈 block 不会强引用 auto、\_\_block 变量
+2. auto 变量按捕获时当时的修饰符捕获
+3. **block 变量，block 对 **Block_byref_age_0 总是强引用，但 \_\_Block_byref_age_0 里边的变量按捕获时当时的修饰符捕获
+
+### 其他
+
+使用 clang 转 OC 为 C++ 代码时候，weak 引用可能会报错，因为 ARC 需要 runtime 环境，用下边命令解决
+{% highlight ruby %}
+xcrun -sdk iphoneos clang -arch arm64 -rewrite-objc -fobjc-runtime=ios-14.0.0 main.m
+{% endhighlight %}

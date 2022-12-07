@@ -1,0 +1,89 @@
+---
+layout: post
+title: ETH-02-GHOST 共识协议
+date: 2022-08-06 16:45:30.000000000 +09:00
+tag: 区块链
+---
+
+## 0x01 前奏
+* 以太坊出块大约 15 秒，比比特币提供了 40 倍，但这样的提升也带来了一些问题，BTC 和 ETH 都是运行在应用层的共识协议，底层是 P2P 网络
+* P2P 网络传输的时间是比较长的，因为的泛洪没有考虑实际的拓扑结构，这就造成一个问题，即发布一个区块，传输可能就要 10 几秒的时间，
+对 BTC 10 分钟出块时间是完全够的
+* 所以以太坊分叉的可能性比较大
+
+加入一个矿池占总算力的 30%，这时三个节点同时出块（两个个体节点+矿池），那么由于矿池的算力很高，所以接下来它所在的区块的那条链成为最长合法链的概率很大，
+而且矿池节点很大，可能其他节点高概率先收到矿池发布的区块，这就是挖矿中心化（ming centralization），这也就造成了中心化不成比例的优势（centralization bias）。
+
+所以如果以太坊还用比特币的共识机制有会有问题
+
+
+## 0x02 GHOST 共识协议
+
+GHOST 协议之前就有，以太坊在 GHOST 上做了一些改进
+
+### GHOST 最初版本
+* 相比比特币分叉的 orphan block（也叫 stale block） 没有任何奖励，以太坊设计了 uncle block 还是会给一些奖励，uncle block 能得到出块奖励的 7/8
+* 以太坊最早出块能得 5 个 eth，后来改成 3 个，uncle block 的奖励就是 3 * (7/8)，即 uncle reward = 3 * (7/8)
+* 而发布区块时如果包含一个 uncle block 则能够额外获得 1/32 的奖励，即 3 * (1/32) + 3
+* 一个区块最多可包含 2 个 uncle block，挖下一个区块时候可以设置 uncle block
+* GHOST 是对那些挖到矿，到最后没有成为最长合法链上区块的节点的矿工一些安慰
+* 这样也鼓励出现分叉后能及时合并，但只能招安两个
+
+
+### 问题
+1. 如果出现第三个需要招安的 uncle block 怎么办？
+2. 矿工或矿池可能故意不把某个 uncle block 包含进去
+
+### GHOST 版本改进
+* 即使 uncle block 是后边区块的祖父或曾祖父区块等等，依然可以作为 uncle block，即可以隔几代还是 uncle
+* 这样解决了故意不包含 uncle block 的问题，即你不包含，不一定别人不包含
+
+{% highlight ruby %}
+以太坊规定最多 7 代以内有共同的主线才算 uncle block，奖励从 7/8 往前逐渐变小，直到 2/8
+换句话说合法的叔父只有 6 个辈分
+{% endhighlight %}
+
+![](/assets/images/eth/uncle.png)
+
+为什么这么设计 7 代以内？原因如下
+1. 如果 uncle 辈数太多，对于全节点来说它要维护的状态就太多了；一个节点发布的区块包含 uncle block，其他节点也是需要验证的
+2. 叔父的奖励递减，激励能在分叉后更早的合并，因为马上包含 uncle block 获得的额外奖励是最多的
+
+{% highlight ruby %}
+uncle block 是为了解决临时分叉，也叫因为状态不同的分叉（state fork）
+{% endhighlight %}
+
+* 比特币发布一个区块有两个奖励
+1. block reward（出块奖励）： 属于静态奖励
+2. tx fee（交易费）：属于动态奖励
+
+* 以太坊发布一个区块有两个奖励
+1. block reward（出块奖励）： 属于静态奖励
+2. gas fee：属于动态奖励
+
+{% highlight ruby %}
+uncle reward 只有 block reward，是不包含 gas fee，得不到 gas fee
+{% endhighlight %}
+* 以太坊不会像比特币一段时间出块奖励就减半，比特币那么规定是为了人为制造稀缺性
+* 以太坊有一次从 5 调整的 3 是因为挖矿难度炸弹被回调了 300 万个区块，导致挖矿难度变简单了，为了平衡性和以太币的供给量不要出现太大变化，
+这个是一次性的并没有说以后会不断下调
+
+#### 问题
+1. 把 uncle block 包含进来时候需要执行 uncle block 里的交易么？
+* 不需要执行
+* 不检查 uncle block 里交易的合法性，反正也不会执行叔父区块的交易
+
+2. 那需要检测 uncle block 什么？
+* 需要检测 uncle block 的发布是否符合挖矿难度，不能随便一个区块就算 uncle block
+* 只检测 uncle block header 就行了，只要确保叔父区块是合法发布的就行
+
+3. 分叉后后边的区块可以获得 uncle reward 么？
+* 不行，以太坊规定只有分叉后的第一个区块才有 uncle reward
+* 原因是：如果后边都有 uncle reward 的话，那么 forking attack 就会变得很容易
+
+![](/assets/images/eth/uncle1.png)
+
+![](/assets/images/eth/uncle2.png)
+
+3 + 0.1668（gas）+ 0.09375(是包含叔父区块的奖励，即 1/32)
+

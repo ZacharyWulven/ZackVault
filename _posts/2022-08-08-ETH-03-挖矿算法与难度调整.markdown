@@ -1,0 +1,231 @@
+---
+layout: post
+title: ETH-03-挖矿算法与难度调整
+date: 2022-08-08 16:45:30.000000000 +09:00
+tag: 区块链
+---
+
+## 0x01 挖矿算法
+
+* Block chain is secured by mining
+* bug bounty 悬赏找 bug
+* 比特币的挖矿算法就是 bug bounty，如果你发现挖矿的 bug 就能获得收益，但目前没有人获得，所以比特币的挖矿算法是比较成功的
+
+{% highlight ruby %}
+bounty hunter 赏金猎人
+{% endhighlight %}
+
+### ASIC resistance
+但现在比特币挖矿都是用 ASIC 芯片矿机，这与去中心化有些违背，中本聪的论文中曾提到 ”one cpu，one vote“。如果老百姓都可以用自己电脑或手机挖矿，
+那么算力是分散的，这种情况下对整个系统的安全性会比较好。
+
+所以后续的加密后边在设计挖矿算法时候就需要做到 ASIC resistance，
+常用的 ASIC resistance 方案就是 mining puzzle 提高对内存访问的需求，即 memory hard mining puzzle。
+ASIC resistance 矿机主要是算力强，但内存性能并不强。比如 LiteCoin，它的 puzzle 是基于 scrypt 
+
+### LiteCoin puzzle 算法例子
+基本思想是，开设一个很大的数组，然后按顺序填一些伪随机数，通过 seed 算出一个值放在第一位，后边每一位的值都是前一位取 hash 得到的。
+然后求解 puzzle 时候计算读取位置，可能先读 index = 9，A 的值，算出接下来读 index = 3，B 的值，如果不通过内存保存这个数组，
+那么挖矿每次计算数值都需要从第一个数开始算算出对应的位置的值，这样计算的复杂度大幅度上升。
+所以想高效挖矿这个数组是需要保存的，但有些矿工会保存一半数组，比如保存奇数的结果，这样内存能省一半，这叫 time-memory trade off。
+
+LiteCoin puzzle 这个算法好处是 memory hard，但缺点是轻节点同样也 memory hard
+{% highlight ruby %}
+Note：设计 puzzle 要遵寻的原则是：difficult to solve，but easy to verify
+即 puzzle 要难，验证 puzzle 要简单
+{% endhighlight %}
+
+* LiteCoin puzzle 就是 puzzle 难，验证也难 😂，所以真正用 LiteCoin 时候，数组大小是 128K，就是为了照顾轻节点
+* 当时 LiteCoin 发布时候目标不仅是 ASIC resistance 还要 GPU resistance，但最后没到达设计目标
+* 但是 LiteCoin 的冷启动很成功
+* LiteCoin 的出块速度是两分半
+
+{% highlight ruby %}
+任何一个加密货币都有冷启动的问题
+基于 PoW 加密货币如果用的人少，那么是不安全的，发动攻击成功概率是高的
+{% endhighlight %}
+
+### 以太坊的 puzzle
+使用两个数据集
+1. 小的是一个 16M 的 cache，定期增长的，后边称为 cache
+2. 大的是一个 1G 的 dataset，DAG。定期增长的；是通过小的 16M 那个生成的，后边称为 DAG
+
+为什么需要两个数据集，是为了验证
+* 轻节点只需要保存 16M 的就行了
+* 矿工才需要大的 1G 的那个
+
+
+#### 生成方式
+1. 与 LiteCoin 第一步相同，也是通过一个 seed 经过一些运算生成数组的第一个元素，然后依次去哈希生成伪随机数填充数组其他位置(下一个位置)（执行 256 次）
+2. 生成一个更大的数组 DAG，然后读取 cache 中数据 256 次算出一个哈希存放在 DAG 中第一元素，依次类推，即 DAG 中每一个元素都是在 cache 中读取 256 个数，
+然后进行运算得出的
+3. puzzle 时候读取 DAG 中的数据（不用 cache 的数据）， 读取 128 个数
+3.1 根据 block header 和 nonce 算出一个哈希映射到 DAG 中某个位置，然后将那个位置树读取出来进行一些运算，得到下一个 DAG 中的位置
+3.2 除了读取算出 DAG 位置外，这个位置相邻的元素也读取出来，这样一次读两个，循环 64 次一共 128 个数
+3.3 最后算出一个哈希值，跟挖矿难度比较是不是符合难度要求，如果不符合就改变 nonce
+3.4 因为 nonce 一改，第一次算出 DAG 的位置就变了，所以这样重复操作
+
+![](/assets/images/eth/puzzle.png)
+
+
+#### 伪代码 步骤
+Step1 先生成 16M 的 cache，cache 中每个元素都是 64 字节的哈希值生成的方法与 LiteCoin 类似，
+第一个元素时 seed 的哈希，后边一个元素时前一个元素的哈希，cache 的内容每隔 30000 个区块会变化一次，
+然后重新生成 cache 的内容，同时 cache 容量大小增加原来的 1/128，即 16M * 1/128 =  128k
+
+![](/assets/images/eth/puzzle_code1.png)
+
+Step2 从 cache 生成 1G 的大数据集，calc_dataset_item 的功能是通过 cache 生成大数据中的第 i 个元素，
+按照伪随机的顺序读取 cache 中的 256 个数，每次读取的位置是由上一个数的数值经过计算得到的，
+这里 get_int_from_item 函数和 make_item 函数，以太坊源码中没有，是为讲解总结成的函数，这样是为了屏蔽
+源码中很多不必要的细节
+
+![](/assets/images/eth/puzzle_code2.png)
+
+* get_int_from_item 即通过当前位置的哈希值计算出下一个要读取的位置
+* 然后 make_item 用这个位置的数和当前哈希值计算出一个哈希值，这样迭代 256 轮，得到一个 64 字节的哈希值作为大数据集中的第 i 个元素
+
+
+
+Step3 calc_dataset 是生成整个 1G 数据集的过程
+
+![](/assets/images/eth/puzzle_code3.png)
+
+* 就是 for 循环调用 calc_dataset_item
+
+
+
+Step4 矿工挖矿的函数和轻节点验证的函数
+
+![](/assets/images/eth/puzzle_code4.png)
+
+#### hashimoto_full 是挖矿的函数，
+* 参数 header 是当前要生成区块的块头，以太坊与比特币一样挖矿只用到 block header 的信息，只用块头的好处是轻节点只需要 header 就能验证
+* 参数 nonce 就是当前尝试的 nonce
+* 参数 full_size 是大数据集中的元素个数，这个 full_size 每 30000 个区块会增加一次，增加 1/128，即 1G * 1/128 = 8M
+* dataset 就是前边生成的大数据集
+
+### 挖矿过程
+1. 首先通过 block header 和当前 nonce 先算一个初始的哈希值
+2. 然后经过 64 次循环，每一次循环取大数据集中两个相邻的数，读取的位置是由当前哈希值计算出来的
+然后再根据这个位置的哈希值更新当前哈希值
+3. 循环 64 次后返回一个哈希值，最后和挖矿难度哈希值比较
+3.1 相邻的哈希值虽然挨着，但没有联系
+
+{% highlight ruby %}
+每个元素都是独立生成的，这是大数据集的特点，这才给轻节点的验证提供了方便
+{% endhighlight %}
+
+#### hashimoto_light 是轻节点验证的函数
+轻节点不挖矿，当它收到某个矿工发布的区块时
+* 参数 header 是需要验证区块的块头
+* 参数 nonce 是包含在这个块头里的 nonce，是发布这个区块的矿工选好的，轻节点的任务是验证这个 nonce 是否符号要求，
+验证用的是 16M 的 cache，也就是 hashimoto_light 最后一个参数
+* 参数 full_size 是大数据集中的元素个数，同 hashimoto_full 中的 
+* 验证过程也是 64 次循环，与 hashimoto_full 的区别是要重新生成大数据集，因为轻节点没有保存大数据集
+
+
+#### Step5 矿工挖矿的主循环
+
+![](/assets/images/eth/puzzle_code5.png)
+
+* 其实就是不断尝试 nonce 的过程，nonce 的取值范围是 0~2^64，取一个 nonce 调用 hashimoto_full 看得到的哈希是否小于目标难度
+* target 是难度目标
+
+Step5 Summary
+
+![](/assets/images/eth/puzzle_code6.png)
+
+* 跟比特币相比要验证的计算要大很多，但仍然在可接受的范围内
+* 矿工要做很多次 nonce 计算所以保存大数据集，用空间换时间
+
+
+### 
+* 目前以太坊挖矿主要是用 GPU 所以它比 LiteCoin 要成功 
+* 以太坊的这个挖矿算法叫 ethash
+* 矿工挖矿要 1G 内存
+* 以太坊没有出现矿机还有个原因是以太坊日后计划 PoW->PoS
+* 矿机的研发 1 年就是很快的了
+
+### 预挖矿 pre-mining
+* 以太坊采用了预挖矿，即以太坊保留一些以太币给以太坊的开发者，有点像创业公司留点期权给创始人和早期员工
+* 而比特币没有用 pre-mining，都是挖出来的，只不过早期比较容易挖到
+
+与 pre-mining 相关的概念是 pre-sale，即把 pre-mining 预留的货币换成资产然后用于加密货币的开发工作
+
+如果不同的货币的 mining puzzle 不同，那就不能取直接比较它们的 hashrate
+
+
+### 小结
+* 挖矿要尽量让大家都能挖，即通用设备也能挖，挖的越民主则区块链越安全
+
+
+## 0x02 难度调整
+比特币是每隔 2016 个区块会调整一下挖矿难度，目标是维持挖矿时间在 10 分钟左右
+以太坊每出一个块都有可能调整挖矿难度
+
+下图为难度调整的公式
+
+![](/assets/images/eth/target.png)
+
+
+* H 指当前区块
+* Hi 是这个区块的序号
+* D(H) 是这个区块的当前难度，分为两部分
+1. max 叫基础部分，是为了维持出块时间在 15 秒左右，
+2. 后边的 E 称为难度炸弹，为了转 PoS 过渡用的
+ 
+### 调整方法
+* 第一部分：基础部分
+
+![](/assets/images/eth/target1.png)
+
+![](/assets/images/eth/target2.png)
+
+1. 在 P(H)（父区块的难度）上加上一些自调整的部分，父区块即当前区块链的最后一个区块
+2. 第一部分的难度调整我一个下限，D0 = 131072，保证挖矿有一个最低的难度
+3. x 是调整的粒度，是父区块的难度除以 2048，不论上调还是下调都是按照整数倍调整的，单位都是 父区块难度的 1/2048
+4. 西格玛 跟出块时间和父区块的叔父区块相关，因为包含叔父区块，说明以太币总量是增加的，因为叔父区块也有奖励，所以这时难度会大一些；
+5. -99 的含义：max 部分有可能是正也可能是负，负的表示降低难度，但最大降低 99 个单位，一个单位 = 父区块难度的 1/2048，所以一次下调
+最大难度是 父区块难度的 99/2048；所以 max 的第一个参数如果是正的表示提高难度，反之亦然
+6. Hs 是本区块的时间戳，P(H)hs 是父区块的时间戳，都是以秒为单位，即分母是出块时间间隔
+ 
+* 第二部分：难度炸弹💣
+难度炸弹设计是比较有趣的。
+设计难度炸弹的初衷是以太坊将来要 PoW->PoS，但 PoS 是不挖矿的，但那些已经投入大量资金挖矿的矿工会不会联合起来抵制这个转换。
+因为转 PoS 需要硬分叉
+
+![](/assets/images/eth/bomb.png)
+
+最早没有 H'，而是直接用 Hi 即当前区块的区号
+难度炸弹的取值是成指数形势增长；由于早期区块序号比较小，所以难度炸弹的值比较小，难度主要还是由第一部分的值决定的，或者说是由系统中的出块时间决定的
+所以当成设计思想是，当这个难度炸弹开始发挥作用时候，已经是以太坊转入 PoS 的时候了；那时候因为挖矿太难了，大家就愿意转 PoS 了
+
+但实际基于 PoS 有很多其他问题，远远没有当初想的那么简单，导致转入 PoS 的时间一再被推迟，但这时难度已经很高了，大家只能继续挖，因为没有其他能达成共识的算法 
+
+最后通过以太坊 EIP 决定计算难度炸弹时候回退区块序号 300 万个，这就有了 H'，同时 block reward 从 5 变成了 3。降低 block reward 是一次性的。
+
+![](/assets/images/eth/bomb1.png)
+
+难度炸弹调整发生在拜占庭阶段
+
+![](/assets/images/eth/bomb2.png)
+
+### 拜占庭阶段调整难度的代码
+
+![](/assets/images/eth/code_target.png)
+
+![](/assets/images/eth/code_target1.png)
+
+![](/assets/images/eth/code_target2.png)
+
+* fakeBlockNumber 就是 H'
+* 这里为什么是 2_999_999 而不是 3_000_000，因为当前判断的是父区块的区块号，而当前区块号比父区块多 1
+* x 就是上一个页算出的基础部分难度 x
+
+
+![](/assets/images/eth/target3.png)
+
+{% highlight ruby %}
+以太坊的最长合法链也可以叫最长难度最大的链
+{% endhighlight %}

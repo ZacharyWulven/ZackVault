@@ -1,0 +1,65 @@
+---
+layout: post
+title: BTC-02-数据结构
+date: 2022-07-15 16:45:30.000000000 +09:00
+tag: 区块链
+---
+
+## 0x01 哈希指针 （Hash Pointers）
+存指向结构体的地址和结构体的哈希值，找到位置和验证是否被篡改，用 H 表示一个哈希指针
+
+### 区块链与普通链表的区别
+1. 用哈希指针代替了普通指针
+
+### 区块
+* 第一个区块叫创世纪区块（genesis block）
+* 最近一个区块叫 most recent block
+* 每个区块都包含指向前一个区块的哈希指针
+* 取 hash 是把整个区块里的内容（包括上一个区块的哈希）一起取 hash，
+通过这样的数据结构可以实现 tamper-evident log，可以验证区块是否被篡改，改变其中一个区块，则后边的区块的哈希都会变。
+* 只有保存最后一个区块的的 hash 值就能知道其他区块是否被篡改
+
+## 0x02 Merkle Tree
+1. 用哈希指针代替了普通的指针
+2. 特点：只要记住 根节点的哈希值就能知道哪个块被篡改了
+3. 比特币中各个区块使用哈希指针连接在一起，每个区块所包含的交易是组织成 Merkle Tree 的形式
+4. Merkle Tree 由 哈希指针和交易组成
+5. Merkle Tree 是平衡二叉树，叶子节点是数据（交易）
+6. 每个区块分为两部分块头和块身
+* Block header：存储当前区块的所有交易的根哈希值，没有交易的具体内容，
+* Block Body：存储交易信息列表
+
+
+### Merkle Proof
+Merkle Tree 作用是提供 Merkle Proof
+
+区块链分全节点和轻节点
+* 全节点：保存整个区块的内容包括 block header 和 block body
+* 轻节点：比如手机上的比特币钱包，只保存 block header
+
+全节点需要发送 Merkle Proof 向轻节点证明交易的完成，Merkle Proof：即从交易节点到 Merkle Tree Root 的路径
+
+![Merkle](/assets/images/Merkle.png)
+
+轻节点向全节点发送请求验证 tx 是否在这个区块中，全节点会把红色的哈希值发给轻节点，而轻节点能够计算出绿色的哈希值，并最终计算出根节点的哈希值，轻节点只有验证沿途的哈希值是正确的就行了，
+但其他节点不需要验证比如红色的哈希值。是否验证 tx 时候改下红色的哈希值，制造哈希碰撞呢，这里是不行了，是通过 collision resistance 特性保证的
+Merkle Proof 可以证明 Merkle Tree 里包含了某个交易。
+
+这种证明也叫 Proof of Membership 或 Proof of Inclusion。
+对应轻节点要验证 Merkle Proof ，如果交易有 n 个则复杂度是 O(log(n))
+
+### 做不存在证明 Proof of Non-membership 
+证明交易没有在里边，最笨的方法就是把整个树扔给轻节点，这样复杂度是 O(n)。
+
+比较高效的方法是需要用到 Sorted Merkle Proof，即对块的哈希排好序。即对交易取 hash 根据 hash 值大小排序，用户本地对要查的交易也取 hash，
+然后请求一个 Sorted Merkle 里的区间，如果想查的交易不在这个区间里就说明不包含这个价交易，这样复杂度也是 O(n)
+
+{% highlight ruby %}
+区块链和 Merkle Tree 都是用哈希指针实现的
+只要是无环的链表都可以用哈希指针去做，有环的话会造成循环依赖
+
+比特币中的 Merkle Proof 不要求排序
+{% endhighlight %}
+
+
+

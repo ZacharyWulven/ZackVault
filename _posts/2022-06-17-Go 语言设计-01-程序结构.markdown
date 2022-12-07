@@ -1,0 +1,382 @@
+---
+layout: post
+title: Go 语言设计-01-程序结构
+date: 2022-06-17 16:45:30.000000000 +09:00
+tag: Go
+---
+
+## 入门
+go 是编译型语言，go 的工具链将程序源文件转成机器相关的原生二进制指令；go run 命令，使一个或多个以 .go 为后缀的源文件进行编译、连接，然后生成可执行文件
+
+{% highlight ruby %}
+$go run hello.go 执行 hello.go 文件
+{% endhighlight %}
+
+go 原生地支持 Unicode 所以它可以处理所有国家的语言
+
+{% highlight ruby %}
+$go build hello.go 生成 hello 二进制程序，可以反复调用
+{% endhighlight %}
+
+go 代码使用包来组织的，包类似于其他语言中的库和模块，一个包由一个或多个 .go 文件组成，放在一个文件夹中
+{% highlight ruby %}
+package mian 声明属于哪个包; main 包比较特殊，它用来定义一个独立的可执行程序，而不是库;
+{% endhighlight %}
+
+  
+### go 中包的概念
+* go 中包的概念，package [包名]
+* go 不需要在语句或声明后使用分号结尾，除非有多个语句
+* "{" 必须和关键字 func 在同一行
+* x+y，换行符可以在 + 后边，不能在 + 前边
+* gofmt 工具可以格式化代码，要养成使用 gofmt 习惯
+* goimports 可以按需管理导入声明的插入和移出，可通过命令获取 $go get golang.org/x/tools/cmd/goimports
+
+### Printf 函数，有超过 10 个转义字符，Go 程序称为 verb
+{% highlight ruby %}
+%d        十进制整数
+%x、%o、%b 十六进制、八进制、二进制
+%f、%g、%e 浮点数：
+%t        布尔型：true or false
+%c        字符（Unicode 码点）
+%s        字符串
+%q        带引号字符串 如 "abc" or 'c'
+%v        内置格式任何值
+%T        任何值的类型
+%%        百分号本身（无操作数）
+
+fmt.Printf 或 log.Printf 以 f 结尾的函数使用和 fmt.Printf 相同的格式化规则
+fmt.Println 以 ln 结尾的函数使用 %v 方式来格式化参数，并在最后追加换行
+{% endhighlight %}
+
+
+## 命名
+名称以字符或下划线开头，后面可跟任意数量字符、数字、下划线；Go 有 25 个关键字 和三十几个预声明的常量、类型和函数,尽量避免使用它们；Go 使用驼峰风格；
+
+{% highlight ruby %}
+Go 区分大小，name 和 Name 是不同的
+{% endhighlight %}
+
+变量声明尽量短，通常变量作用域越大名称越长；
+
+### 实体的跨包性
+Note：
+{% highlight ruby %}
+Note：一个实体如果在函数内声明，则只在函数内局部有效；一个实体如果在函数外声明，它将对包里的所有源文件可见；
+
+Note：实体的第一字母的大小写决定其可见性是否跨包
+1 如果以大写字母开头，它是导出的，即对包外可见和可访问，可被自己包外的其他程序引用，例如 fmt 包中 Printf
+2 包名总是由小写构成的
+{% endhighlight %}
+
+## 声明
+主要有 4 种主要的声明：
+* 变量 var
+* 常量 const
+* 类型 type
+* 函数 func
+
+### 文件格式：
+从上到下
+
+1. package [name],  go 文件以 package 开头，表明自己属于哪个包
+2. import (), 导入的包
+3. 包级别的类型、const、变量、函数声明，不区分顺序（本文件和包内所有文件可见）
+
+## 变量
+### 通用形式： var name type = expression
+* 类型和表达式可以省略，但不能都省略
+* 如果表达式省略，其初始值对应类型的零值，数字对应 0、布尔对应 false、字符串是""、引用或接口是 nil
+* Go 语言里不存在未初始化的变量, 如果变量没有明确的初始化，则它将初始化为 "空值"
+* 包级别的变量初始化在 main 开始之前进行
+
+
+  不合法 case：
+
+{% highlight ruby %}
+1 j = i++
+2 --i
+但 i++ 合法 等于 i += 1, 或 i = i + 1
+{% endhighlight %}
+
+### 短变量声明：声明和初始化, 格式：name := expression
+{% highlight ruby %}
+  i := 100
+{% endhighlight %}
+
+### 多变量声明
+短变量声明不需要声明所有在左边的变量，如果一些变量在同一个词法块中声明，那么短声明等同于赋值；即 多变量 := 左边至少要有一个是需要声明的
+{% highlight ruby %}
+  m, n := 1, 2
+  k, n := 2, 3
+{% endhighlight %}
+
+## 指针
+变量是存储值的地方；指针的值是一个变量的地址，使用指针可以无须知道变量名，间接获取或更新变量的值，这点非常有用；指针类型的零值是 nil；
+{% highlight ruby %}
+x := 1
+p := &x // p 是整型指针，指向 x ，类型是 *int, & 是取地址
+*p = 100
+fmt.Println("*p is", *p)
+
+
+
+var p1 = f()
+fmt.Println(f() == f())
+fmt.Println(*p1)
+
+v1 := 1
+incr(&v1)
+fmt.Println("v1 is", v1)
+
+函数返回局部变量地址是非常安全的
+func incr(p *int) int {
+  *p++
+  return *p
+}
+{% endhighlight %}
+
+每次使用变量的地址或复制一个指针，我们就创建了新的别名或者方式来标记同一变量；*p 就是 v1 的别名；这是把双刃剑：为了找到所有访问变量的语句需要知道所有别名，
+不仅指针产生别名，复制其他引用类型（如 slice、map、通道、结构体、接口）都会产生别名；
+
+## new 函数（不常用）
+另一种创建变量的方式是使用内置的 new 函数；格式：new(T) 创建一个未命名的 T 类型变量，初始化 T 为零值，并返回其地址 *T
+
+{% highlight ruby %}
+p := new(int)
+*p = 2
+fmt.Println("p is", *p)
+{% endhighlight %}
+
+使用 new 创建变量不需要引入变量名，通过指针即可访问
+{% highlight ruby %}
+以下两个是等价的
+func newInt() *int {
+  return new(int)
+}
+
+func newInt2() *int {
+  var i int
+  return &i
+}
+两个变量类型不携带任何信息且是零值，例如 struct{} or [0]int，它们地址一样
+new 函数用的比较少。
+{% endhighlight %}
+
+## 变量的生命周期
+生命周期指在程序执行过程中变量存在的时间段
+* 包级别变量的生命周期是整个程序的执行时间（可以理解为全局的）
+* 局部变量的生命周期是动态的，每次执行声明语句时创建一个新的实体，变量一直生存到它变得不可访问，这是它占用的存储空间被回收
+* 函数参数和返回值也是局部变量，它们在其闭包函数被调用时候创建
+
+### 垃圾回收器如何知道一个变量是否被回收？
+基本思路是每一包级别变量以及每一当前执行函数局部变量，可以作为追溯该变量的路径源头，通过指针和其他方式的引用找到变量，如果变量路径不存在，那么变量不可被访问。
+
+### 逃逸 (Note)
+编译器可以选择使用堆或栈上空间来分配
+{% highlight ruby %}
+var global *int
+
+func f()  {
+  var x int
+  x = 1
+  global = &x
+}
+<Note> x 一定使用堆空间，因为它在 f 函数返回后还可以从 global 变量访问，尽管它被声明一个局部变量，这种叫 x 从 f 中逃逸
+
+{% endhighlight %}
+
+当 g 返回时，变量 *y 不可访问，因为 *y 没有逃逸，所以编译器可以安全在栈上分配 *y
+{% highlight ruby %}
+
+func g()  {
+  y := new(int)
+  *y = 1
+}
+{% endhighlight %}
+
+逃逸概念使你不需要额外费心来写正确的代码，要记住逃逸在性能优化时使有好处的，因为每一次逃逸都需要一次额外的内存分配过程。
+
+
+## 赋值
+
+### 交换变量
+{% highlight ruby %}
+  x, y := 1, 2
+  x, y = y, x
+{% endhighlight %}
+
+### 斐波那契
+{% highlight ruby %}
+func fib(n int) int {
+  x, y := 0, 1
+  for i := 0; i < n; i++ {
+    x, y = y, x+y
+  }
+  return x
+}
+{% endhighlight %}
+
+### 其他
+{% highlight ruby %}
+v, ok = map[key]  // map 查询
+v, ok = x.(T)     // 类型断言
+v, ok = <-ch      // 通道接收
+
+_, err = io.Copy(dst, src) // 不需要的值赋给空标识符 _
+{% endhighlight %}
+
+### 可赋值性
+赋值语句时显式的，很多地方赋值时隐式的
+* 一个函数调用隐式地将参数的值赋值给对应参数的变量
+* 一个 return 语句隐式的将 return 操作数赋值给结果变量
+* map 和通道的元素也遵循相似的隐私赋值
+
+不管是显式还是隐式的，左边和右边类型相同才是合法的
+
+## 类型声明
+type 声明定义一个新的命名类型：
+{% highlight ruby %}
+格式：type name underlying-type
+{% endhighlight %}
+类型声明通常是包级别的，如果名字是导出的（开头使用大写字母），则其他包也可以访问它
+
+{% highlight ruby %}
+type Celsius float64
+type Fahrenheit float64
+
+const (
+  AbsoluteZeroC Celsius = -273.15
+  FreezingC     Celsius = 0
+  BoilingC      Celsius = 100
+)
+
+func CToF(c Celsius) Fahrenheit  {
+  return Fahrenheit(c * 9 / 5 + 32)
+}
+
+func FToC(f Fahrenheit) Celsius {
+  return Celsius((f - 32) * 5 / 9)
+}
+{% endhighlight %}
+
+即使 Fahrenheit 和 Celsius 底层都是 float64 但它们不是相同类型，所以它们不能进行算术表达式合并或比较。
+
+{% highlight ruby %}
+对于每个类型 T，都有一个对应类型转换操作 T(x) 将 x 转换换为类型 T
+{% endhighlight %}
+
+* 如果两个类型有相同的底层类型或二者都是指向相同底层类型变量的未命名指针类型，则二者是可以相互转换的，类型转换不改变类型值的表达方式，只改变类型
+
+{% highlight ruby %}
+  var c Celsius
+  var f Fahrenheit
+  fmt.Println(c == Celsius(f))
+{% endhighlight %}
+这里会打印 true，因为做了类型转换，type 对应 float64 作用不大，对于结构体作用很大，之后会讲。
+
+## 包和文件
+包即库或模块，每一个包给它的声明提供了命名空间
+
+{% highlight ruby %}
+可导出的标识符以大写字母开头，比如 fmt.Printf，Printf 首字母大写；但包名都是小写。
+{% endhighlight %}
+每个文件开头使用 package 声明包的名称。package 前面是文档注释对整个包进行描述，每一个包只有一个文件应该包含该包的文档注释，扩展的文档注释通常放在一个文件中，一般叫 doc.go
+
+### 导入包
+使用 import 导入，通常路径最后一个是包名，例如 gopl.io/ch2/tempconv，tempconv 是包名；如果导入一个没有被引用的包，会报错
+
+### 包的初始化
+包的初始化从初始化包级别的变量开始，按照变量声明顺序初始化；如果包由多个 .go 文件组成，初始化按照编译器收到文件顺序进行，go 工具会在调用编译器前将 .go 文件进行排序。
+
+#### init 函数
+对于包级别每一个变量，生命周期从其值被初始化开始，但对于其他一些变量比如数据表，初始化表达式不是简单的设置它的初始值。这种情况下 init 函数机制会比较简单。
+{% highlight ruby %}
+
+var pc [16]int
+
+func init() {
+
+  for idx := range pc {
+    pc[idx] = idx
+  }
+}
+init 函数不能被调用或被引用，在每一个文件里当程序启动时候，init 函数按照它们声明的顺序自动执行。
+{% endhighlight %}
+包的初始化按照在程序中导入的顺序来进行，依赖顺序优先，每次初始化一个包。如果 p 包导入了 q 包，可以确保 q 在 p 之前已完全初始化。
+初始化是自下向上的，main 包最后初始化。这种方式，保证程序 mian 函数执行前，所有的包已经初始化完毕。
+
+## 作用域
+
+### 不要将作用域和生命周期混淆
+* 声明的作用域是声明在程序文本出现的区域，它是一个编译时的属性。
+* 变量的生命周期是变量在执行期间能被程序的其他部分所引用的起止时间，它是一个运行时属性。
+
+### 语法块
+语法块（block）是由大括号围起来的语句。比如由函数体或循环体。在语法块内部声明的变量对语法块外部”不可见“。全局块：包含了全部源代码的词法块。
+每一个包、每一个文件、每个 for、if、switch 语句以及 switch 每个条件，都在词法块中。
+
+{% highlight ruby %}
+在包级别（任何函数外）声明，可被包里任何文件引用
+{% endhighlight %}
+
+控制流标签（如 break、continue、goto）的作用域是整个外层函数
+
+
+### 重复声明
+一个程序可以包含多个同名的声明，前提是它们在不同的词法块中。当编译器遇到一个同名的引用时，将从最内层词法块到全局词法块查找其声明。 
+* 如果没有找到会报错
+* 如果内层和外层都存在声明，则内层将先被找到；即使用内层
+
+{% highlight ruby %}
+func f() *int {
+  v := 100
+  return &v
+}
+
+var gg = "gg"
+
+func main() {
+  f := "f"
+  fmt.Println("f is", f)   // 局部变量 f 覆盖了包级别的函数 f
+  fmt.Println("gg is", gg)
+}
+{% endhighlight %}
+
+
+### for 循环创建两个词法块
+* 一个是循环体本身是显式的
+* 另一个是隐式的，包括条件、后置语句（i++）、以及 for 语句体本身
+{% highlight ruby %}
+  x := "hello"
+  for _, x := range x {
+    x := x + 'A' - 'a'
+    fmt.Printf("%c", x)
+  }
+{% endhighlight %}
+
+### switch 与 if 语句块
+{% highlight ruby %}
+后一个语句嵌套在前一个中，所以后一个语句能访问前一个的声明
+  if m := f12(); m == 0 {
+    fmt.Println(m)
+  } else if y := g1(m); m == y {
+    fmt.Println(m)
+  } else {
+    fmt.Println("m is", m, "y is", y)
+  }
+  fmt.Println("x is", m, "y is", y)  // 这里编译报错
+{% endhighlight %}
+
+### if
+{% highlight ruby %}
+  if file, err := os.Open(); err != nil {
+    return err
+  } else {
+    file.Close()
+  }
+    file.Close() 编译失败
+
+file 作用域是 if 语句，通常 Go做法是 if 块处理错误然后返回。
+{% endhighlight %}
+

@@ -1,0 +1,476 @@
+---
+layout: post
+title: Go 语言设计-02-基本数据
+date: 2022-06-21 16:45:30.000000000 +09:00
+tag: Go
+---
+
+## 基本数据
+Go 数据类型分四大类，本章主题是基础类型
+1. 基础类型 basic type
+* 数字 number
+* 字符串 string
+* 布尔型 boolean
+2. 聚合类型 aggregate type，通过组合各种简单类型得到更复杂的数据类型
+* 数组 array
+* 结构体 struct
+3. 引用类型 reference type，共同点是全都间接指向程序变量或状态，于是操作所引用的数据效果就会遍及该数据的全部引用
+* 指针 pointer
+* 切片 slice
+* 字典 map
+* 函数 function
+* 通道 channel
+4. 接口类型 interface type
+
+
+## 整数
+1. 有符号：int8、int16、int32、int64
+2. 无符号：uint8、uint16、uint32、uint64
+3. rune 类型是 int32 类型的同义词，常常用于指明一个值是 Unicode 码点（code point）
+4. byte 类型是 uint8 类型同义词，强调一个值是原始数据，而非量值。
+5. uintptr 无符号整数，其大小不明确，但足以完整存放指针，uintptr 仅仅用于底层编程，例如 go 与 c 程序或操作系统的接口界面。
+
+{% highlight ruby %}
+另外还有 int 和 uint，根据平台不同大小分别是 32 bits 或 64 bits 
+int、uint、uintptr 其大小是不明确的；虽然 int 天然是 32 bits，但要当做 int32 来用，必须显示转换类型
+{% endhighlight %}
+
+
+{% highlight ruby %}
+有符号整数以补码表示，最高位为符号位，n 位数字取值范围是 -2^(n - 1) ~ (2^(n - 1) - 1)
+无符号范围是 0 ~ 2^(n) - 1
+
+例如，int8 范围为 -128~127，uint8 范围为 0~255
+{% endhighlight %}
+
+
+## 运算符
+{% highlight ruby %}
+取模运算符 % 只能用于整数。取模余数的正负号总是与除数一致 -5 % 3 和 -5 % -3 都得 -2
+{% endhighlight %}
+
+### / 除法运算的行为取决于操作是是否都为整数。整数相除商会舍弃小数部分
+* 5 / 4 = 1
+* 5.0 / 4 = 1.25
+* 5 / 4.0 = 1.25
+
+全部基本类型的值（布尔、数值、字符串）都可以比较。可用 == 和 != 比较运算
+
+### 一元取负 -，一元取正（无实际影响）
+### 对应整数 +x 是 0+x 的简写；-x 是 0-x 的简写；对于浮点数和复数： +x 就是 x，-x 就是 x 的负数；
+### 位运算符
+* &   位运算 AND
+*  \|  位运算 OR
+
+{% highlight ruby %}
+Note 
+^   位运算 XOR 或取反(^)：
+1. ^ 作为二元运算符表示位异或
+2. 取反：如果作为一元前缀运算符则表示按位取反或按位取补，运算符结果就是操作数逐位取反；
+
+&^  位清空（AND NOT）：表达式 z=x&^y，若 y 的某位是 1，则 z 对应的位为 0；否则它等于 x 的对应位。
+{% endhighlight %}
+
+* \<< 左移：算术上 x\<<n 等价于 x 乘以 2^n
+* \>> 右移动：算术上 x\>>n 等价于 x 除以 2^n，向下取整
+
+x\<<n 和 x\>>n 中，n 决定位移量，而且 n 必须为无符号型，x 可以是无符号或有符号；左移以 0 填补右边空位，无符号整数右移以 0 填补左边空位；
+但有符号的右移操作是按符号位填补空位
+
+{% highlight ruby %}
+NOTE：
+因此，请注意如果将整数以位模式处理，须使用无符号整型。无符号整数往往只用于位运算和特定算术运算符。
+其他大多数情况都应该优先使用有符号整型。
+{% endhighlight %}
+
+
+
+{% highlight ruby %}
+  var x uint8 = 1<<1 | 1<<5
+  var y uint8 = 1<<1 | 1<<2
+  // %b 以二进制形式输出数值；08 表示在结果前补零，补够 8 位
+  fmt.Printf("%08b\n", x)     00100010
+  fmt.Printf("%08b\n", y)     00000110
+
+  fmt.Printf("%08b\n", x&y)   00000010
+  fmt.Printf("%08b\n", x|y)   00100110
+  fmt.Printf("%08b\n", x^y)   00100100
+  fmt.Printf("%08b\n", x&^y)  00100000
+
+  fmt.Printf("%08b\n", x<<1)  01000100
+  fmt.Printf("%08b\n", x>>1)  00010001
+{% endhighlight %}
+
+### 类型转换
+浮点型转成整型，会舍弃小数部分，正值向下取整，负值向上取整。
+
+不论有无大小符号限制，整数都能写成
+* 十进制
+* 八进制以 0 开头，比如 0666，表示 POSIX 文件系统的权限
+* 十六进制，以 0x 开头，大小写都可以，广泛用于强调位模式，而非数值大小
+
+{% highlight ruby %}
+  o := 0666
+  fmt.Printf("%d, %[1]o, %#[1]o\n", o)
+
+  h := int64(0xdeadbeef)
+  fmt.Printf("%d, %[1]x, %#[1]x,  %#[1]X\n", h)
+
+Printf 技巧
+1 通常 Printf 格式化字符串含多个 % 谓词，要求提供相同数量的操作数，而 % 后的副词 [1] 告诉 Printf 重复使用第一个操作数
+2 %o %x %X 前的副词 # 告诉 Printf 输出相应的 0、0x、0X 前缀
+{% endhighlight %}
+
+文字符号
+{% highlight ruby %}
+  ascii := 'a'
+  unicode := '国'
+  newline := '\n'
+  fmt.Printf("%d, %[1]c, %[1]q\n", ascii)
+  fmt.Printf("%d, %[1]c, %[1]q\n", unicode)
+  fmt.Printf("%d, %[1]q\n", newline)
+  %c 输出文字符号，%q 输出带有单引号
+{% endhighlight %}
+
+## 浮点数
+两种大小的浮点数
+* float32，math 包提供了 math.MaxFloat32
+* float64，math 包提供了 math.MaxFloat64
+
+{% highlight ruby %}
+NOTE：
+十进制下，float32 的有效数字大约 6 位，float64 的有效数字大约 15 位
+应优先使用 float64
+{% endhighlight %}
+
+小数点前后数字可以省略
+{% highlight ruby %}
+.5 表示 0.5
+1. 表示 1.0
+{% endhighlight %}
+
+非常大或非常小的数使用科学计数法
+{% highlight ruby %}
+const Avogadro = 6.02214129e23
+const Planck = 6.62606957e-34
+{% endhighlight %}
+
+### Printf 浮点数使用谓词
+* %g 输出，%g 会自动保持足够精度，并选择最简洁的表示方式
+* 对于数据表用 %e(有指数) 或 %f(无指数) 更合适
+* 这三个谓词都能掌控输出宽度和数值精度
+
+### 无穷与 NaN
+{% highlight ruby %}
+  var z float64
+  fmt.Println(z, -z, 1/z, -1/z, z/z) // 0 -0 +Inf -Inf NaN  
+  
+  // math.IsNaN() 函数判断其参数是否是非数值
+  fmt.Println(math.IsNaN(z / z))
+  
+  1/z，正无穷大
+  -1/z，负无穷大
+  z/z，NaN(Not a Number)
+
+
+  在数字运算中我们倾向将 NaN 当作信号值，但直接判断具体的计算结果是否为 NaN 可能导致潜在错误
+  因为 NaN 的比较总不成立
+  // math.NaN() 返回 NaN
+  nan := math.NaN()
+  fmt.Println(nan == nan, nan < nan, nan > nan) // false false false
+{% endhighlight %}
+
+一个函数值是浮点数最好单独判断否则可能出错
+{% highlight ruby %}
+func compute() (value float64, ok bool)  {
+  // ...
+  if failed {        // 单独判断
+    return 0, false
+  }
+  return result, true
+}
+{% endhighlight %}
+
+## 复数
+Go 具备两种大小的复数 complex64 和 complex128，二者分别由 float32 和 float64 构成。
+* 内置的 complex 函数根据给定的实部和虚部创建复数。
+* 内置的 real 函数和 imag 函数则分别提取复数的实部和虚部。
+
+{% highlight ruby %}
+  var x complex128 = complex(1, 2) // 1+2i
+  var y complex128 = complex(3, 4) // 3+4i
+  fmt.Println(x * y)            // -5+10i
+  fmt.Println(real(x * y))      // -5
+  fmt.Println(imag(x * y))      // 10
+{% endhighlight %}
+
+如果在浮点数或十进制整数后紧跟 i，如 3.14i 它就变成了一个虚数，表示一个实部为 0 的复数；复数常量可以和其他常量相加（整型或浮点型，实数和虚数皆可）。
+
+可以用 == 或 != 判断复数，若两个复数的实部和虚部都相等，则它们相等。
+
+## 布尔值
+布尔型只有两种可能
+* 真 true
+* 假 false
+
+if 和 for 语句里的条件就是布尔型；如果运算符左边的操作数已经能确定总结果，则右边操作数不会计算在内。&& 优先级高于 \|\|。
+
+## 字符串
+* 字符串是不可变的字节序列，可以包含任何数据，包括 0 值字节。
+* 文本字符串被解读成按 UTF-8 编码的 Unicode 码点（文字符号）序列
+* len() 函数返回字符串的字节数（并非文字符号的数目）
+* 字符串的第 i 个字节不一定就是第 i 个字符，因为非 ASCII 字符的 UTF-8 码点需要两个或多个字节。
+* 字符串可比较，按照字节比较
+
+子串生成操作 
+* s[i:j] 产生一个新的字符串，
+* 范围是半开区间 [i, j)
+* 如果 i，j 没有写默认 i = 0，j = len(s)
+* 越界会有问题 
+
+{% highlight ruby %}
+NOTE：
+字符串的值无法改变，即使赋值新值给字符串变量，将生成新的字符串赋值给变量，旧的保持不变，也不能 s[0] = 'l' 修改它。
+{% endhighlight %}
+
+### 不可变的含义
+{% highlight ruby %}
+NOTE：
+不可变意味着两个字符串能安全的共用一段底层内存。使得复制任何长度的字符串的开销都很低廉。
+类似的，字符串 s 和子串（如 s[7:]）可以安全的共用数据，因此子串生成操作的开销也是低廉的。
+这里两种情况都没有分配内存。
+
+即字符串及其子串共用相同的底层数据。
+{% endhighlight %}
+
+### 字符串字面量
+字符串字面量，形式上就是带双引号的字节序列；Go 的源文件总是按 UTF-8 编码。所以在源码中我们可以将 Unicode 码点写入字符串字面量。
+在带双引号的字符串字面量中，转义序列以反斜杠（\）开始。
+
+源码中字符串也可以包含十六进制或八进制的任意字节
+* 十六进制转义写成 /xhh，h 是十六进制数值（大小写均可）且必须是两位
+* 八进制转义写成 /ooo，必须使用三位八进制数字，且不能超过 \377
+
+#### 原生的字符串字面量
+* 使用反引号 \`...\`
+* 转义字符不起作用
+* 可以展开多行
+* 回车符会被删除，换行符会被保留，使得同一字符串在所有平台相同
+* 正则表达式可以方便的写成原生的字符串字面量，也适用于 HTML 模板，JSON 字面量，命令行提示信息。
+
+### Unicode
+Unicode 包括了世界上所有文书体系的全部字符。
+
+{% highlight ruby %}
+各自有 Unicode 码点和标准数字组成，在 Go 中称为文字符号（rune）。
+
+天然适合保存单个文字符号的数据类型就是 int32，Go 中 rune 类型正是 int32 类型的别名。
+{% endhighlight %}
+
+我们可以将文字符号的序列表示成 int32 值序列，这种表示方式称作 UTF-32 或 UCS-4，每个 Unicode 码点的编码长度相同都是 32 位。
+可大多数面向计算机的可读文本是 ASCII 码，每个字符只需 8 位，即一个字节。导致不必要浪费，改进是 UTF-8
+
+### UTF-8
+UTF-8 以字节为单位对 Unicode 码点作变长编码。UTF-8 是现行的 Unicode 标准。
+
+一个文字编码首字节编码仅占一个字节，若最高位是 0，则它是 7 位的 ASCII 码
+{% highlight ruby %}
+0xxxxxxx                            文字符号 0~127 （ASCII 码）
+110xxxxx 10xxxxxx                   128~2047 少于 128 个未使用的值
+1110xxxx 10xxxxxx 10xxxxxx          2048~65535 少于 2048 个未使用的值
+11110xxx 10xxxxxx 10xxxxxx 10xxxxxx 65536~0x10ffff  其他未使用的值
+{% endhighlight %}
+
+UTF-8 兼容 ASCII 码，Go 源文件总是以 UTF-8 编码。
+
+\uhhhh 表示 16 位码点，\uhhhhhhhh 表示 32 位码点，其中每个 h 代表一个十六进制数字，32 位码点值几乎用不到
+
+### 字符串和字节 slice
+4 个标准包对字符串操作特别重要：bytes、strings、strconv、unicode
+* strings 包用于搜索、替换、比较、修整、切分、连接字符串
+* bytes 包用于操作字节 slice，[]bytes 类型其某些属性和字符串相同，bytes.Buffer 构建字符串更高效
+* strconv 包主要用于转换布尔值、整数、浮点数为与之对应的字符串形式；还有为字符串添加或去除引号的函数
+* unicode 包判断文字符号值特性的函数，如 IsDigit
+
+{% highlight ruby %}
+  s1 := "abc"
+  b := []byte(s1)
+  s2 := string(b)
+
+  fmt.Println("s1 is ", s1) // abc
+  fmt.Println("b is ", b)   // [97 98 99]
+  fmt.Println("s2 is ", s2) // abc
+{% endhighlight %}
+
+[]byte(s1) 转换会分配新字节数组，拷贝填入 s1 含有的字节，并生成一个 slice 引用，指向整个数组。
+具备优化的编译器可能会避免分配内存和复制内容，但复制有必要确保 s1 的字节维持不变，即使 b 之后改变。
+string(b) 也会产生一个副本保证 s2 不可变。
+
+{% highlight ruby %}
+func intsToString(values []int) string {
+  var buf bytes.Buffer
+  buf.WriteByte('[')
+  for i, v := range values {
+    if i > 0 {
+      buf.WriteString(", ")
+    }
+    fmt.Fprintf(&buf, "%d", v)
+  }
+  buf.WriteByte(']')
+  return buf.String()
+}
+
+fmt.Println(intsToString([]int{1, 2, 3})) // [1, 2, 3]
+
+{% endhighlight %}
+
+### 字符串和数字相互转换
+使用 fmt.Sprintf
+使用 strconv 函数
+
+{% highlight ruby %}
+  x := 123
+  g := fmt.Sprintf("%d", x)
+  fmt.Println("g is", g, "strconv g is", strconv.Itoa(x))
+  // g is 123 strconv g is 123
+{% endhighlight %}
+
+FormatInt 和 FormatUInt 可以按不同进位制格式化数字
+{% highlight ruby %}
+  fmt.Println(strconv.FormatInt(int64(x), 2)) // 1111011，以二进制格式化
+{% endhighlight %}
+
+strconv 包中的 Atoi 函数或 ParseInt 函数用于解释表示整数的字符串，ParseUInt 用于无符号的整数
+{% highlight ruby %}
+  x1, err := strconv.Atoi("123")              // x 是整数 x1 is 123
+  x2, err := strconv.ParseInt("123", 10, 64)  // 十进制，最长为 64 位；第三个参数时 0 表示 int，x2 is 123
+{% endhighlight %}
+
+## 常量
+常量可以保证在编译阶段就计算出表达式的值，并不需要等到运行时。
+
+{% highlight ruby %}
+所有常量都属于基本类型：布尔、字符串、数字；常量的值恒定；对常量运算后还是常量
+const pi = 3.1415926
+{% endhighlight %}
+
+常量声明可以同时指定类型和值，如果没有指定类型，将根据右边表达式推断。
+
+{% highlight ruby %}
+const (
+  e  = 2.718
+  pi = 3.14
+)
+
+const noDelay time.Duration = 0
+const timeout = 5 * time.Minute
+
+func main() {
+  // time.Duration 通过 %T 展示
+  fmt.Printf("%T %[1]v\n", noDelay)
+  fmt.Printf("%T %[1]v\n", timeout)
+  fmt.Printf("%T %[1]v\n", time.Minute)
+
+}
+{% endhighlight %}
+
+同时声明，除第一个外其他项目等号右边都可省略，会复用前一项的表达式以及类型
+{% highlight ruby %}
+const (
+  a = 1
+  b
+  c
+  d
+)
+fmt.Println(a, b, c, d) // 1 1 1 1
+{% endhighlight %}
+
+### Note：常量生成器 iota
+{% highlight ruby %}
+iota 从 0 开始的自增序列，逐项加 1，这种类型通常称为枚举。
+
+iota 影响
+1 每次"等号"才加一次
+2 继承自上边的公式
+{% endhighlight %}
+
+星期例子
+{% highlight ruby %}
+type Weekday int
+
+const (
+  Sunday Weekday = 0
+  Monday
+  Tuesday
+  Wednesday
+  Thursday
+  Friday
+  Saturday
+)
+{% endhighlight %}
+
+位操作
+{% highlight ruby %}
+type Flag uint
+
+const (
+  FlagUp Flag = 1 << iota
+  FlagDown
+  FlagLeft
+  FlagRight
+)
+
+func isUp(v Flags) bool {
+  return v&FlagUp == FlagUp
+}
+
+func turndown(v *Flags) {
+  *v &^= FlagDown
+}
+
+func setLeft(v *Flags) {
+  *v |= FlagLeft
+}
+
+func isHorizontal(v Flags) bool {
+  return v&(FlagLeft|FlagRight) != 0
+}
+
+{% endhighlight %}
+
+更复杂的例子
+{% highlight ruby %}
+const (
+  _ = 1 << (10 * iota)
+  KB
+  MB
+  GB
+  TB
+  PB
+  EB
+  ZB
+  YB
+)
+{% endhighlight %}
+
+### 无类型常量
+许多常量并不从属某一个具体类型，编译器将这些从属类型待定的常量表示成某些值，这些值比基本类型精度更高，且算术精度高于原生机器精度。
+可以认为它们精度至少达到 256 为。
+
+从属类型共 6 种
+* 无类型布尔
+* 无类型整数
+* 无类型文字符号
+* 无类型浮点数
+* 无类型复数
+* 无类型字符串
+
+它们借助推迟确定从属类型，不仅能暂时维持更高的精度，还无需转换类型；
+
+例如上例中的 YB、ZB 值过大，用哪个整型都无法存储但他们都是合法常量；再比如 math.pi 如果一开始就确定具体类型比如 float64 会导致精度下降。
+
+{% highlight ruby %}
+只有常量才可以是无类型的。若将无类型常量声明为变量或在变量右边赋值，则常量会被隐式转换成改变量类型。
+{% endhighlight %}
+
+无类型的浮点数和复数被转换成大小明确的 float64 和 complex128，只有 int 是大小不明确的。
