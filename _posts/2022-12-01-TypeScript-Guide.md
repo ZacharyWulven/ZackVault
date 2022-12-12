@@ -2,8 +2,8 @@
 layout: post
 title: TypeScript-Guide
 date: 2022-12-01 16:45:30.000000000 +09:00
-categories: [TypeScript]
-tags: [TypeScript] 
+categories: [typescript]
+tags: [typescript] 
 ---
 
 ## 简介
