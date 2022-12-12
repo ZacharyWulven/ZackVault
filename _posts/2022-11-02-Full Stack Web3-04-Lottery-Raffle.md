@@ -2,7 +2,8 @@
 layout: post
 title: Full Stack Web3-04-Lottery-Raffle
 date: 2022-11-02 16:45:30.000000000 +09:00
-tag: 区块链
+categories: [区块链，chainlink公开课]
+tags: [区块链]
 ---
 
 # Hardhat Smart Contract Lottery/Raffle ( Lesson 9)
@@ -12,7 +13,8 @@ Full Stack = Smart Contracts（backend）+ HTML / Javascript / Website stuff (fr
 
 ## 0x01 Hardhat setup
 参考：https://github.com/smartcontractkit/full-blockchain-solidity-course-js#lesson-9-hardhat-smart-contract-lottery
-{% highlight ruby %} 
+
+``` console
 1 $ mkdir hh-contract-lottery-fcc
 2 $ cd hh-contract-lottery-fcc
 3 $ code .
@@ -24,56 +26,46 @@ ethers @nomiclabs/hardhat-etherscan @nomiclabs/hardhat-waffle chai \
 ethereum-waffle hardhat hardhat-contract-sizer hardhat-deploy \
 hardhat-gas-reporter prettier prettier-plugin-solidity solhint \
 solidity-coverage dotenv
-{% endhighlight %}
+```
 
 ### Write Contract Code
-
-{% highlight ruby %} 
-1 在根目录 mkdir contracts 目录
-2 Raffle.sol
-
-Event 参考：https://www.youtube.com/watch?v=KDYJC85eS5M
-{% endhighlight %}
+1. 在根目录 mkdir contracts 目录
+2. Raffle.sol
+3. [Event 参考](https://www.youtube.com/watch?v=KDYJC85eS5M)
 
 ### Tips
-{% highlight ruby %} 
+```
 1 external 比 public 更省 gas
 2 带 virtual 方法表示期望被 override
-{% endhighlight %}
+```
 
 ## 0x02 Chainlink VRF (Randomness in Web3)
-{% highlight ruby %} 
-Chainlink VRF 文档 https://docs.chain.link/vrf/v2/subscription/examples/get-a-random-number
-Open subscription Manager https://vrf.chain.link/?_ga=2.214098708.2047585917.1669966594-236993336.1663668981
-{% endhighlight %}
+[Chainlink VRF 文档](https://docs.chain.link/vrf/v2/subscription/examples/get-a-random-number)
+[Open subscription Manager](https://vrf.chain.link/?_ga=2.214098708.2047585917.1669966594-236993336.1663668981)
 
-### Create Subscription 链接钱包
-![](/assets/images/web3-full/vrf-01.png)
+1 Raffle 合约 import "@chainlink/contracts/src/v0.8/VRFConsumerBaseV2.sol";
 
-### Add Funds 输入 10，创建 10 个连接
-![](/assets/images/web3-full/vrf-02.png)
-
-
-{% highlight ruby %} 
-1 import "@chainlink/contracts/src/v0.8/VRFConsumerBaseV2.sol";
+```console
 2 $ yarn add --dev @chainlink/contracts
+```
+
 3 继承 VRFConsumerBaseV2，contract Raffle is VRFConsumerBaseV2 { }
-{% endhighlight %}
 
 ### Hardhat Shorthand 简化输入的命令
-{% highlight ruby %} 
 1 安装 hardhat-shorthand
+
+```console
 $ yarn global add hardhat-shorthand
 
-2 $ hh compile 等于 $ yarn hardhat compile
-{% endhighlight %}
+$ hh compile 等于 $ yarn hardhat compile
+```
 
 ### 实现 VRF Request
-{% highlight ruby %} 
-https://vrf.chain.link/?_ga=2.218722074.2047585917.1669966594-236993336.1663668981
-get subscriptionId 等一些参数
+[get subscriptionId 等一些参数](https://vrf.chain.link/?_ga=2.218722074.2047585917.1669966594-236993336.1663668981)
 
 VRF 获取随机数代码
+
+```
     // 已经产生 Winner
     // 实际是 Chainlink 调用这个方法
     function fulfillRandomWords(
@@ -93,15 +85,16 @@ VRF 获取随机数代码
         }
         emit WinnerPicked(recentWinner);
     }
-{% endhighlight %}
+```
 
 ## 0x03 Chainlink Automation（以前叫 Chainlink Keeper）
-* 用于自动触发合约 https://docs.chain.link/chainlink-automation/compatible-contracts/
-* Sample https://remix.ethereum.org/#url=https://docs.chain.link/samples/Automation/AutomationCounter.sol&optimize=false&runs=200&evmVersion=null&version=soljson-v0.8.7+commit.e28d00a7.js
-* checkUpkeep 函数表示是时候得到一个随机数了么 ？
+[用于自动触发合约](https://docs.chain.link/chainlink-automation/compatible-contracts/)
+[Sample](https://remix.ethereum.org/#url=https://docs.chain.link/samples/Automation/AutomationCounter.sol&optimize=false&runs=200&evmVersion=null&version=soljson-v0.8.7+commit.e28d00a7.js)
+
+checkUpkeep 函数表示是时候得到一个随机数了么
 
 ### Chainlink Automation 代码
-{% highlight ruby %} 
+```
     /**
      * @dev This is the function that the Chainlink Keeper nodes call
      * they look for the `performUpkeep` to return true
@@ -160,10 +153,10 @@ VRF 获取随机数代码
         );
         emit RequestedRaffleWinner(requestId);
     }
-{% endhighlight %}
+```
 
 ## 0x04 Unit Tests
-{% highlight ruby %} 
+```console
 $ hh test --grep "updates the raffle state"
 
 
@@ -171,5 +164,42 @@ $ hh test --grep "updates the raffle state"
     mocha: {
         timeout: 200000, // 200 seconds max
     },
-{% endhighlight %}
+```
+
 ## 0x05 Staging Tests
+Step 1 确保有足够的 eth 和 link
+[LINK Token 水管](https://docs.chain.link/resources/link-token-contracts)
+
+Step 2 创建 subscriptionId [Create Subscription](https://vrf.chain.link/)
+
+![image](/assets/web3-full/vrf-01.png)
+![image](/assets/web3-full/vrf-03.png)
+
+这里创建的 subscriptionId 是 7503，下图的 consumer 就是抽奖者
+![image](/assets/web3-full/vrf-04.png)
+
+将 subscriptionId 填入 helper-hardhat-config.js 中的 goerli 中的 subscriptionId 字段
+
+Step 3 Add Funds 输入 2，创建 2 个连接，我们支付 gas 费以便后续获得随机数
+
+- [VRF相关文档](https://docs.chain.link/vrf/v2/subscription/supported-networks)
+
+- link 推荐 [web3-full-course](https://github.com/smartcontractkit/full-blockchain-solidity-course-js#lesson-9-hardhat-smart-contract-lottery)
+
+![image](/assets/web3-full/vrf-02.png)
+
+Step 4 部署合约
+```console
+yarn hardhat deploy --network goerli
+
+// 或者安装了插件的可以这样
+hh deploy --network goerli
+```
+[合约地址](https://goerli.etherscan.io/address/0x5908F32bcc3bCBD0714585A4b7eF9DEAB7d7fe83)
+
+Step 5 add consumers
+将合约地址添加到 VRF consumer
+![image](/assets/web3-full/vrf-05.png)
+
+Step 6 注册 Chainlink Automation（以前叫 Chainlink Keepers）
+[automation](https://automation.chain.link/)
