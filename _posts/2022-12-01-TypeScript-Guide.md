@@ -120,33 +120,36 @@ function fn2(): never {
 
 ### object
 object 表示一个 js 对象, 用的少
-```ts
+```typescript
 let o: object;
 o = {};
 ```
 指定对象中需要包含哪些属性。语法：{属性名: 属性值 ...}，属性名后有 ？ 表示属性名是可选的。
-```ts
+```typescript
 let o1: { name: string; age?: number };
 o1 = { name: "mike" };
 ```
 propName 表示属性名，它是 string 类型，属性值 any 表示可以是任意类型。c2 表示对象必须有一个 name 属性，其他属性都可以
-```ts
+```typescript
 let c2: { name: string; [propName: string]: any };
 ```
 
 ### Function
 
 设置函数结果的类型声明：语法：(形参：类型，形参：类型 ...) => 返回值类型。d1 是参数为 number 的函数 返回值也是 number
-```ts
+```typescript
 let d1: (a: number, b: number) => number;
 ```
 
 ### Array 数组
-数组声明
-- 1 类型[]
-- 2 Array<类型>
+数组的两种声明方式
 
-```ts
+```
+1 类型[]
+2 Array<类型>
+```
+
+```typescript
 let list: number[]; // string[] 表示字符串数组
 list = [1, 2, 3];
 
@@ -156,14 +159,14 @@ g = ["1", "2"];
 
 ### 元组，就是固定长度的数组
 语法 [类型，类型]
-```ts
+```typescript
 // 声明两个元素的元组
 let t: [string, string];
 t = ["hello", "abc"];
 ```
 
 ### 枚举
-```ts
+```typescript
 enum Gender {
   Male = 0,
   Female = 1,
@@ -174,13 +177,13 @@ gender = Gender.Male;
 ```
 
 ### & 表示同时满足
-```ts
+```typescript
 let j: { name: string } & { gender: Gender };
 j = { name: "hello", gender: Gender.Female };
 ```
 
 ### 类型别名
-```ts
+```typescript
 type myType = 1 | 2 | 3 | 4 | 5;
 let k: myType;
 k = 3;
