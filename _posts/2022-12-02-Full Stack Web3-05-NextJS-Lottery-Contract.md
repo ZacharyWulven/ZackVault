@@ -47,7 +47,7 @@ $ yarn run dev 运行网站
 [参考链接](https://www.w3schools.com/react/react_components.asp)
 
 ```console
-$ yarn add moralis react-moralis
+$ yarn add moralis react-moralis moralis-v1
 ```
 安装 moralis 后显示的依赖
 
@@ -56,6 +56,7 @@ $ yarn add moralis react-moralis
     "eslint": "8.29.0",
     "eslint-config-next": "13.0.6",
     "moralis": "^2.9.0",
+    "moralis-v1": "^1.12.0",
     "next": "13.0.6",
     "react": "18.2.0",
     "react-dom": "18.2.0",
@@ -63,3 +64,324 @@ $ yarn add moralis react-moralis
   }
 ```
 ## React Hooks
+hook 允许函数组件访问状态和 react 功能。[hooks-overview]https://reactjs.org/docs/hooks-overview.html
+
+```react
+import { useMoralis } from "react-moralis"
+
+export default function ManualHeader() {
+    //
+    /**
+     * useMoralis 就是 react hook
+     * 一种跟踪状态的方法
+     */
+    const { enableWeb3, account } = useMoralis()
+    // some button that connects us and changes connected to be true
+    // await enableWeb3() 连接钱包
+    return (
+        <div>
+            {/* 没有账户显示连接按钮，否则显示已连接 */}
+            {/* address 显示为 0xec49...ad6d */}
+            {/* 切换账户会自动显示 */}
+            {account ? (
+                <div>
+                    Connected to {account.slice(0, 6)}...{account.slice(account.length - 4)}
+                </div>
+            ) : (
+                <button
+                    onClick={async () => {
+                        await enableWeb3()
+                    }}
+                >
+                    Connect
+                </button>
+            )}
+        </div>
+    )
+}
+```
+
+
+## useEffect Hook
+useEffect 类似观察者模式
+
+```react
+    const { enableWeb3, account, isWeb3Enabled } = useMoralis()
+    // some button that connects us and changes connected to be true
+
+    /**
+     * useEffect
+     * 第一个参数是一个函数
+     * 
+     * 第二个参数是可选的，一个依赖数组
+     * case1: useEffect 会检查依赖数组中的值，一旦数组中的值由变化就调用参数一的函数
+     * case2: 这里不需要给数组也行
+     * 如果不传依赖数组，它会随时重新渲染
+     * 你要小心，因为你会获得 circular render
+     * case3: 如果依赖数组是一个空数组，它只会在加载时运行一次，只运行一次
+     */
+    // automatically run on load
+    // then, it'll run checking the value
+    useEffect(() => {
+        console.log("HI!")
+        console.log("isWeb3Enabled is", isWeb3Enabled)
+    }, [isWeb3Enabled])
+```
+## Local Storage
+设置注入设置项，记录最近的交互。连接钱包，查看 application，local storage 能看到 connected inject
+```
+if (typeof window !== "undefined") {
+  window.localStorage.setItem("connected", "injected")
+}                      
+```
+
+## web3uikit
+1. 在 components 目录创建 Header.js
+2. 安装 [web3uikit](https://github.com/web3ui/web3uikit)
+
+
+```console
+$  yarn add web3uikit
+```
+
+Header.js 代码，此时可替换 ManuelHeader 为 Header
+```react
+import { ConnectButton } from "web3uikit"
+
+export default function Header() {
+    return (
+        <div>
+            {/* // moralisAuth false 不连接服务器 */}
+            <ConnectButton moralisAuth={false} />
+        </div>
+    )
+}
+```
+
+## Calling Functions in NextJS
+[MoralisWeb3](https://github.com/MoralisWeb3/react-moralis#useweb3contract)
+
+### 设置 abi.json 和 Addresses.json
+创建 constants 目录，创建 abi.json 和 contractAddresses.json，先设置好 contractAddresses.json 内容
+```json
+{ "5": [], "31337": [] }
+
+```
+
+在 hh-contract-lottery-fcc 里 deploy 目录创建 99-update-front-end.js
+```javascript
+const { ethers, network } = require("hardhat")
+const fs = require("fs")
+
+const FRONT_END_ADDRESSES_FILE = "../nextjs-contract-lottery/constants/contractAddresses.json"
+const FRONT_END_ABI_FILE = "../nextjs-contract-lottery/constants/abi.json"
+
+module.exports = async function () {
+    if (process.env.UPDATE_FRONT_END) {
+        console.log("Updating front end...")
+        await updateContractAddresses()
+        await updateAbi()
+    }
+}
+
+async function updateAbi() {
+    const raffle = await ethers.getContract("Raffle")
+    fs.writeFileSync(FRONT_END_ABI_FILE, raffle.interface.format(ethers.utils.FormatTypes.json))
+}
+
+async function updateContractAddresses() {
+    const raffle = await ethers.getContract("Raffle")
+    const chainId = network.config.chainId.toString()
+
+    let addresses = fs.readFileSync(FRONT_END_ADDRESSES_FILE, "utf8")
+    console.log(`addresses ${addresses}`)
+    let contractAddresses = JSON.parse(addresses)
+
+    if (chainId in contractAddresses) {
+        if (!contractAddresses[chainId].includes(raffle.address)) {
+            contractAddresses[chainId].push(raffle.address)
+        }
+    } else {
+        contractAddresses[chainId] = [raffle.address]
+    }
+    fs.writeFileSync(FRONT_END_ADDRESSES_FILE, JSON.stringify(contractAddresses))
+}
+
+module.exports.tags = ["all", "frontend"]
+```
+
+执行 $ hh deploy 或 hh node 写入 abi.json 和 Addresses.json
+
+```
+$ cd hh-contract-lottery-fcc 
+$ hh node // 开启 hardhat node
+```
+
+LotteryEntrance 代码
+
+```
+// have a function to call the lottery
+import { useWeb3Contract } from "react-moralis"
+import { contractAddresses, abi } from "../constants"
+import { useMoralis } from "react-moralis"
+import { useEffect } from "react"
+
+export default function LotteryEntrance() {
+    const { chainId: chainIdHex, isWeb3Enabled } = useMoralis()
+    const chainId = parseInt(chainIdHex)
+    console.log(chainId)
+
+    const raffleAddress = chainId in contractAddresses ? contractAddresses[chainId][0] : null
+    // 这是我们发送交易的方式
+    // 运行函数可以同时交易和读取状态
+    // 可以发送交易也可以发送函数
+    const { runContractFunction: getEntranceFee } = useWeb3Contract({
+        abi: abi,
+        contractAddress: raffleAddress, // specify the networkId
+        functionName: "getEntranceFee",
+        params: {},
+    })
+
+    useEffect(() => {
+        if (isWeb3Enabled) {
+            // try to read the raffle entrance fee
+            async function updateUI() {
+                const entranceFee = await getEntranceFee()
+                console.log(`fee is ${entranceFee}`)
+            }
+            updateUI()
+        }
+    }, [isWeb3Enabled])
+
+    return <div>Hi from LotteryEntrance!</div>
+}
+```
+
+> fee is 有可能是 undefined 注意切换本地网络还是测试网
+{: .prompt-info }
+
+## useState
+entranceFee 可以作为一个 state 常量，有点类似提供一个属性
+
+[Using the State Hook](https://reactjs.org/docs/hooks-state.html)
+
+
+```react
+import { useEffect, useState } from "react"
+
+    // use State for entranceFee
+    // useState("0") 设置初始值为 0
+    const [entranceFee, setEntranceFee] = useState("0")
+```
+
+## Calling Functions in NextJS
+
+```react
+const { runContractFunction: enterRaffle } = useWeb3Contract({
+    abi: abi,
+    contractAddress: raffleAddress, // specify the networkId
+    functionName: "enterRaffle",
+    params: {},
+    msgValue: entranceFee,
+})
+
+return (
+    <div>
+        Hi from LotteryEntrance!
+        {raffleAddress ? (
+            <div>
+                <button
+                    onClick={async () => {
+                        await enterRaffle()
+                    }}
+                >
+                    Enter Raffle
+                </button>
+                Entrance Fee is: {ethers.utils.formatUnits(entranceFee, "ether")} ETH
+            </div>
+        ) : (
+            <div>No Raffle Address Deteched</div>
+        )}
+    </div>
+)
+```
+
+## useNotification
+[notification-hook](https://web3ui.github.io/web3uikit/?path=/docs/5-popup-notification--hook-demo)
+
+编辑 _app.js
+
+```react
+import "../styles/globals.css"
+import { MoralisProvider } from "react-moralis"
+import { NotificationProvider } from "web3uikit"
+
+// _app.js 就是程序入口
+function MyApp({ Component, pageProps }) {
+    return (
+        /**
+         * 程序需要被 MoralisProvider 包裹起来，即所谓的 react 提供者
+         * 这将成为我们的 context provider
+         *
+         * initializeOnMount 是可选 hook，进入服务器以向我们网站添加更多功能
+         * 这里我们不想链接服务器，不需要额外功能
+         *
+         * MoralisProvider 就是 hook，
+         * hook 允许函数组件访问状态和 react 功能
+         */
+        <MoralisProvider initializeOnMount={false}>
+            <NotificationProvider>
+                <Component {...pageProps} />
+            </NotificationProvider>
+        </MoralisProvider>
+    )
+}
+
+export default MyApp
+```
+
+LotteryEntrance.js
+
+```react
+const dispatch = useNotification()
+
+const handleNewNotification = async (tx) => {
+    dispatch({
+        type: "info",
+        message: "Transaction Complete!",
+        title: "Tx Notification",
+        position: "topR",
+        icon: "bell",
+    })
+}
+    
+<button
+    onClick={async () => {
+        await enterRaffle({
+            onSuccess: handleSuccess,
+            onError: (error) => {
+                console.log(error)
+            },
+        })
+    }}
+>
+    Enter Raffle
+</button>
+```
+
+## Reading & Displaying Contract Data
+
+### 测试本地环境网站是否正常
+1 启动 localhost 本地节点
+
+```console
+$ hh node
+```
+2 MetaMask 设置-高级-重置账户
+3 刷新网站 UI
+4 脚本 mock recentWinner
+
+```console
+$ yarn hardhat run script/mockOffchain.js --network localhost
+```
+5 刷新网站 UI 查看 recentWinner
