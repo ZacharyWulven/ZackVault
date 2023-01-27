@@ -1,6 +1,6 @@
 ---
 layout: post
-title: Hardhat-Starter-Kit
+title: Hardhat-ERC20s
 date: 2022-12-04 16:45:30.000000000 +09:00
 categories: [区块链, Chainlink 公开课]
 tags: [区块链, Chainlink 公开课]
@@ -36,4 +36,4 @@ $ yarn add --dev @openzeppelin/contracts
 
 一些教程
 ![image](/assets/web3-full/filcoin-13.png)
-
+1:02:43
