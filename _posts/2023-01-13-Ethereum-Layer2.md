@@ -12,7 +12,7 @@ tags: [区块链, Ethereum]
 那么那些方案属于 Layer2 ？业界的观点是 Layer2 要继承 Layer1 的安全性。
 所以侧链不属于 Layer2，因为侧链独立运行，并且有自己的共识协议和验证者。侧链与主链是脱节的。
 
-# Rollup（卷起）
+# Rollup（本意可以叫卷起，Web3 这里是打包的意思）
 Rollup 扩容的方式，可理解为就是把上千个交易捆绑在一起处理再把压缩后的数据上传到以太坊主网，大幅提高交易的处理效率
 
 ![image](/assets/images/eth/layer2-1.png)
