@@ -65,6 +65,9 @@ $ bundler exec jekyll serve
 
 $ brew link --force openssl
 $ gem install eventmachine -- --with-cppflags=-I/usr/local/opt/openssl/include
+
+或
+$ gem install eventmachine -v '1.2.7' -- --with-ldflags="-Wl,-undefined,dynamic_lookup"
 $ gem install jekyll
 
 最后 install bundle
