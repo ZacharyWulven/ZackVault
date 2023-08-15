@@ -389,6 +389,108 @@ print(lst)
 ```
 
 # 12 字典
+* 原理就是哈希表，index = hash(key)
 
 
+> 字典中的 key 必须是不可变对象（例如整数、字符串）
+{: .prompt-info }
+
+
+## 12.1 字典的创建方式
+### 方式 1：{}
+
+```python
+dic = {
+    'name': '张三',
+    'age': 20,
+}
+print(dic) # {'name': '张三', 'age': 20}
+```
+
+### 方式 2：使用内置函数 dict()
+
+```python
+dic = dict(name='李四', age=19)
+print(dic) # {'name': '李四', 'age': 19}
+```
+
+### 空字典
+
+```python
+dic = {}
+print(dic) # {}
+```
+
+## 12.2 字典中的元素获取
+
+```python
+# 方式 1：[key]，如果 key 不存在则抛出异常
+print(dic['name'])
+
+# 方式 2：get(key) 方法，如果 key 不存在则返回 None
+print(dic.get('name'))
+
+# 为查找提供默认值
+# female 是当查找 sex 的 value 不存在时的默认值
+print(dic.get('sex', 'female'))
+```
+
+
+## 12.3 判断指定 key 在字典中是否存在
+* 格式：[key] in [dict]
+
+```python
+# key=name 是否存在于 dic
+print('name' in dic)
+```
+
+## 12.4 删除指定键值对
+
+```python
+del dic['age']
+print('age' in dic)
+```
+
+## 12.5 删除字典中所有键值对
+
+```python
+dic.clear()
+print(dic)
+```
+
+## 12.6 字典新增键值对
+
+```python
+dic['sex'] = 'female'
+print(dic)
+```
+
+## 12.7 字典的视图操作
+
+```python
+# keys() 获取所有的键
+keys = dic.keys()
+print(keys)
+print(type(keys)) # <class 'dict_keys'>
+print(list(keys)) # 转为 list
+
+# values() 获取所有的值
+values = dic.values()
+print(values)
+print(type(values)) # <class 'dict_values'>
+
+
+# items() 获取所有的 key-value 对
+items = dic.items()
+print(items)
+print(type(items)) # <class 'dict_items'>
+```
+
+
+## 12.8 字典元素遍历
+
+```python
+for key in dic:
+    print(key)
+```
 
