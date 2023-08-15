@@ -494,3 +494,18 @@ for key in dic:
     print(key)
 ```
 
+## 12.9 字典生成式
+* 使用内置函数 zip() 将可迭代对象作为参数，将对象中对应的元素打包成一个元组，然后返回由这些元组组成的列表
+* 格式：`{ key_表达式 : value_表达式 for 自定义_key_变量, 自定义_value_变量 in zip(keys, values) }`
+*      `{ item.upper() : price for item, price in zip(items, prices) }`
+
+```python
+items = ['Fruits', 'Books', 'Others']
+prices = [96, 78, 85]
+dic = { item.upper() : price for item, price in zip(items, prices)}
+print(dic)
+```
+
+> 如果 items 和 prices 内元素数量不同，zip 按照元素数量最小的那个来生成
+{: .prompt-info }
+
