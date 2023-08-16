@@ -557,3 +557,10 @@ print(lst)  # [20, 30]
 lst.append(40) # 列表可以增加新元素
 print(t[1]) # [20, 30, 40]
 ```
+
+## 13.3 元组的遍历
+
+```python
+for item in t:
+    print(item)
+```
