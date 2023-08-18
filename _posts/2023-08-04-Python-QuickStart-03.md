@@ -127,3 +127,24 @@ def fun2(a, b, *,c, d, **kwargs):     # OK
 def fun3(a, b, *,c=10, d, **kwargs):  # OK
     pass
 ```
+
+## 16.6 变量的作用域
+
+### 全局变量
+* 在函数外定义的变量，可作用于函数内外
+
+### 局部变量
+* 在函数内定义的变量，只在函数内有效
+* 局部变量使用 `global` 声明就会变成全局变量
+
+```python
+def vr():
+    global name
+    name = 'Jack'
+    print('vr', name)
+
+vr()           # vr Jack
+name = 'Tom'
+print(name)    # Tom
+vr()           # vr Jack
+```
