@@ -388,6 +388,140 @@ print(h._Human__age) # 通过 dir 获取的属性名，绕过进行使用私有�
 * Python 支持多继承
 * 定义子类时，必须在其构造函数中调用父类的构造函数
 
+### 单继承与方法 Override
+
+```python
+class Person(object): # 继承自 object，不写 object 也行
+    def __init__(self, name, age):
+        self.name = name
+        self.age = age
+
+    def info(self):
+        print(self.name, self.age)
+
+
+class Student(Person):
+
+    def __init__(self, name, age, score):
+        super().__init__(name, age)     # 调用 super
+        self.score = score
+        
+    def info(self):     # override 父类方法
+        super().info()  # 调用 super
+        print(f'分数是 {self.score}')
+
+
+
+s = Student('Jack', 23, 60)
+s.info()
+```
+
+### 多继承
+
+```python
+class A:
+    pass
+
+
+class B:
+    pass
+
+
+class C(A, B):
+    pass
+```
+
+
+## 18.5 object 类的 __str__() 方法
+* `object` 类是所有类的父类，如果一个类没有明确写继承自哪个类，那么它默认继承 `object` 类
+* 可以使用内置函数 `dir()` 查看指定对象的所有属性
+* `object` 有一个 `__str__()` 方法用于返回一个对象的描述（类似 swift 的 description 方法），对应与内置函数 `str()` 方法
+
+
+```python
+class Human:
+
+    def __init__(self, name, age):
+        self.name = name
+        self.age = age
+
+    def __str__(self): # 类似 swift 的 description 方法
+        return f'name is {self.name}, age is {self.age}'
+
+
+h = Human('Tom', 22)
+print(h) # 这里会默认调用对象的 __str__() 方法
+```
+
+
+## 18.6 多态
+ 
+```python
+class Animal:
+
+    def eat(self):
+        print('动物会吃')
+
+class Dog(Animal):
+
+    def eat(self):
+        print('狗吃骨头')
+
+
+class Cat(Animal):
+
+    def eat(self):
+        print('猫吃鱼')
+        
+        
+class Man:
+
+    def eat(self):
+        print('人吃五谷杂粮')
+
+
+
+def eat(obj):
+    obj.eat()
+
+
+eat(Dog())    # 狗吃骨头
+eat(Cat())    # 猫吃鱼
+eat(Animal()) # 动物会吃
+eat(Man())    # 人吃五谷杂粮
+```
+
+## 18.7 特殊属性和特殊方法
+
+* 即以 `__` 开头和结束的方法
+* `__dict__` 获得类对象或实例对象所绑定的所有属性和方法的字典
+
+
+```python
+class A:
+    pass
+
+class B:
+    pass
+
+class C(A, B):
+    def __init__(self, name, age):
+        self.name = name
+        self.age = age
+
+
+print('--------特殊属性----------------')
+c = C('Jack', 20)
+print(c.__dict__)  # 实例 c 的属性 {'name': 'Jack', 'age': 20} 字典
+print(C.__dict__)  # 类 C 的属性 {'__module__': '__main__', '__init__': <function C.__init__ at 0x7fcd0815e5e0>, '__doc__': None}
+print(c.__class__) # 输出这个对象的类型 <class '__main__.C'>
+print(C.__bases__) # 输出 C 类的父类的元组，(<class '__main__.A'>, <class '__main__.B'>)
+print(C.__base__)  # 输出第一个父类 <class '__main__.A'>
+print(C.__mro__)   # 输出类的层级结构 (<class '__main__.C'>, <class '__main__.A'>, <class '__main__.B'>, <class 'object'>)
+print(A.__subclasses__()) # 输出 A 的子类列表， [<class '__main__.C'>] 
+```
+
+
 
 
 
