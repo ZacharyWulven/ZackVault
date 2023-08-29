@@ -7,248 +7,6 @@ tags: [Python]
 ---
 
 
-# 16 函数
-
-## 16.1 函数调用参数传递
-### 两种传参方式
-1. 根据形参对应位置进行实参传递，即按实际传递顺序给形参
-2. 关键字传递，类似 Swift 的参数标签
-
-
-> 传参时，如果传入对象是可变对象，那么函数内对其进行修改会影响其实际对象的值。而不可变对象不会受影响。
-{: .prompt-info }
-
-
-## 16.2 函数返回值
-* 函数返回多个值时，类型为元组
-* 不写 `return` 默认返回 `None`
-
-```python
-def make_tuple():
-    return 1, 2
-
-t = make_tuple()
-print(t, t[1])   # (1, 2) 2
-
-def fn1():
-    print('fn1')
-
-ret = fn1()
-print(ret) # None
-```
-
-## 16.3 参数默认值
-
-```python
-def fn2(a,b=10): # b 默认值是 10
-    print('a =', a, 'b =', b)
-    
-
-fn2(100)         # a = 100 b = 10
-fn2(100, 40)     # a = 100 b = 40
-```
-
-
-## 16.4 个数可变的形参
-
-### 个数可变的位置形参
-* 函数定义时，可能无法确定传递位置实参的个数，使用可变位置参数
-* 使用 `*` 定义个数可变的位置形参，结果为一个`元组`
-
-```python
-def fn3(*args):
-    print(args[0])
-    print(args)
-
-fn3(10)           # (10,)
-fn3(10, 20)       # (10, 20)
-fn3(10, 20, 30)   # (10, 20, 30)
-```
-
-### 个数可变的关键字形参
-* 函数定义时，可能无法确定传递关键字实参的个数，使用个数可变的关键字形参
-* 使用 `**` 定义个数可变的关键字形参，结果为一个`字典`
-
-```python
-def fn4(**kwargs):
-    print(kwargs)
-
-fn4(name='tom', age='10') # {'name': 'tom', 'age': '10'}
-```
-
-### 一个函数可同时定义，个数可变的位置形参和个数可变的关键字形参
-
-```python
-def fn5(*args1, *args2):     # 报错
-    pass
-
-def fn5(**kwargs, **kwargs): # 报错
-    pass
-
-def fn6(**kwargs, *args):    # 报错
-    pass
-
-def fn7(*args, **kwargs):    # 个数可变的位置形参必须在前边
-    pass
-```
-
-> 一个函数中，个数可变的位置形参、个数可变的关键字形参，只能定义一个；如果既有个数可变的位置形参，又有个数可变的关键字形参，则个数可变的位置形参必须在前边（例如 fn7）；
-{: .prompt-info }
-
-
-## 16.5 参数总结
-* 传参时使用 `*` 将列表中每个元素都转为位置实参传入
-* 传参时使用 `**` 将字典中的元素转为关键字实参传入
-* 形参中从 `*` 后的参数，强制必须使用关键字实参传递
-
-```python
-def fun(a, b, c):
-    print(f'a={a},b={b},c={c}')
-
-lst = [10, 20, 30]
-# fun(lst) # error 因为 lst 被当成一个参数
-fun(*lst) # *lst 将列表中每个元素都转为位置实参传入
-
-dic = {'a': 11, 'b': 22, 'c': 33}
-fun(**dic) # **dic 将字典中的元素转为关键字实参传入
-
-def fun1(a, b, *,c, d): # 从 * 后的参数，强制必须使用关键字传递
-    print(f'a={a},b={b},c={c}, d={d}')
-
-fun1(1, 2, c=3, d=4) # a=1,b=2,c=3, d=4
-
-# 形参定义顺序
-def fun2(a, b, *,c, d, **kwargs):     # OK
-    pass
-
-# def fun3(a, b, *,c, d, *args):      # 报错
-#     pass
-
-def fun3(a, b, *,c=10, d, **kwargs):  # OK
-    pass
-```
-
-## 16.6 变量的作用域
-
-### 全局变量
-* 在函数外定义的变量，可作用于函数内外
-
-### 局部变量
-* 在函数内定义的变量，只在函数内有效
-* 局部变量使用 `global` 声明就会变成全局变量
-
-```python
-def vr():
-    global name
-    name = 'Jack'
-    print('vr', name)
-
-vr()           # vr Jack
-name = 'Tom'
-print(name)    # Tom
-vr()           # vr Jack
-```
-
-
-# 17 异常
-
-## 17.1 多异常结构
-* 捕获异常顺序按照先子类后父类的顺序
-* 兜底最后可加 BaseException
-
-## 17.2 try...except...
-
-```python
-def try_01():
-    try:
-        a = int(input('请输入第一个整数'))
-        b = int(input('请输入第二个整数'))
-        result = a / b
-        print('result is', result)
-    except ZeroDivisionError:       # 捕获除数为 0 异常
-        print('第二个数不能为 0')
-    except ValueError:
-        print('是能输入数字串')
-    except BaseException as e:
-        print(f'e is {e}')
-
-try_01()
-```
-## 17.2 try...except...else
-* 如果 try 中没有异常则执行 else 块
-* 如果 try 中抛出异常则执行 except 块
-
-```python
-def try_02():
-    try:
-        a = int(input('请输入第一个整数'))
-        b = int(input('请输入第二个整数'))
-        result = a / b
-    except BaseException as e:
-        print(f'e is {e}')
-    else:
-        print('result is', result)
-
-# try_02()
-```
-
-## 17.3 try...except...else...finally
-* finally 块无论是否发生异常都会被执行，常用于释放 try 块中的资源
-
-```python
-def try_03():
-    try:
-        a = int(input('请输入第一个整数'))
-        b = int(input('请输入第二个整数'))
-        result = a / b
-    except BaseException as e:
-        print(f'e is {e}')
-    else:
-        print('result is', result)
-    finally:
-        print('谢谢使用')
-```
-
-
-## 17.4 常见的异常类型
-
-```python
-# 1 ZeroDivisionError：除 0 或模 0 导致
-a = 1 % 0 # ZeroDivisionError: integer division or modulo by zero
-
-# 2 IndexError
-lst = [1, 3, 4]
-print(lst[5])   # IndexError: list index out of range
-
-# 3 KeyError  字典中没有这个 key
-dic = {'name': 'Jack'}
-print(dic['age'])   # KeyError: 'age'
-
-# 4 NameError 没有声明/初始化对象
-print(name)  # NameError: name 'name' is not defined
-
-# 5 SyntaxError 语法错误
-int a = 10  # SyntaxError: invalid syntax
-
-# 6 ValueError 传入无效的参数
-a = int('hello') # ValueError: invalid literal for int() with base 10: 'hello'
-```
-
-## 17.5 traceback 模块
-* 手动调用 traceback 打印
-
-```python
-import traceback
-def try_trace():
-    try:
-        print('------------------------')
-        print(1/0)
-    except:
-        traceback.print_exc()
-
-try_trace()
-```
-
 # 18 类与对象
 
 > Python 中一切皆对象
@@ -491,7 +249,7 @@ eat(Animal()) # 动物会吃
 eat(Man())    # 人吃五谷杂粮
 ```
 
-## 18.7 特殊属性和特殊方法
+## 18.7 特殊属性
 
 * 即以 `__`    开头和结束的方法
 * `__dict__`  获得类对象或实例对象所绑定的所有属性和方法的字典
@@ -526,7 +284,104 @@ print(C.__mro__)   # 输出类的层级结构 (<class '__main__.C'>, <class '__m
 print(A.__subclasses__()) # 输出 A 的子类列表， [<class '__main__.C'>] 
 ```
 
+## 18.8 特殊方法
+* 通过重写 __add__ 使得对象有 + 的功能
+* 通过重写 __len__ 输出对象的长度，内置函数 len() 会调用参数的 __len__ 方法
 
 
+```python
+class Spider:
 
+    def __init__(self, name):
+        self.name = name
+
+    # 通过重写 __add__ 使得对象有 + 的功能
+    def __add__(self, other):
+        return self.name + other.name
+
+    # 通过重写 __len__ 输出对象的长度，内置函数 len() 会调用参数的 __len__ 方法
+    def __len__(self):
+        return len(self.name)
+
+
+s1 = Spider('Jack')
+s2 = Spider('Tom')
+s = s1 + s2
+print(s)   # JackTom
+s = s1.__add__(s2)
+print(s)   # JackTom
+
+print(len(s1))  # 会调用 s1 的 __len__ 方法
+print(s1.__len__())
+```
+
+## 18.9 __new__() 和 __init__()
+* __new__() 用于创建对象
+* __init__() 对创建的对象进行初始化
+
+
+```python
+class Person:
+    def __new__(cls, *args, **kwargs):
+        print(f'new is called, cls id = {id(cls)}')
+        obj = super().__new__(cls)
+        print(f'create obj id = {id(obj)}')
+        return obj
+
+    def __init__(self, name, age):
+        print(f'init is called, self id = {id(self)}')
+        self.name = name
+        self.age = age
+
+
+print(f'object 类对象 id = {id(object)}')
+print(f'Person 类对象 id = {id(Person)}')
+
+p = Person('Mike', 23)
+print(f'p 的 id = {id(p)}')
+```
+
+
+> 先调用 `__new__()` 再调用 `__init__()`
+{: .prompt-info }
+
+
+## 18.10 浅拷贝与深拷贝
+* Python 一般都是浅拷贝，拷贝时，对象包含的子对象不拷贝，原对象与拷贝对象引用同一个对象
+* 使用 copy 模块的 `deepcopy` 函数，递归拷贝对象中的子对象，原对象与拷贝对象的子对象引用不同
+
+```python
+class CPU:
+    pass
+
+class Disk:
+    pass
+
+class Computer:
+
+    def __init__(self, cpu, disk):
+        self.cpu = cpu
+        self.disk = disk
+
+cup1 = CPU()
+disk1 = Disk()
+c1 = Computer(cup1, disk1)
+
+
+import copy
+c2 = copy.copy(c1)
+print(c1, c1.cpu, c1.disk) # <__main__.Computer object at 0x7f7f780bcbe0> <__main__.CPU object at 0x7f7f780bcc40> <__main__.Disk object at 0x7f7f780bcc10>
+print(c2, c2.cpu, c2.disk) # <__main__.Computer object at 0x7f7f780bcb20> <__main__.CPU object at 0x7f7f780bcc40> <__main__.Disk object at 0x7f7f780bcc10>
+
+print('-------深拷贝-----------------')
+c3 = copy.deepcopy(c1)
+print(c1, c1.cpu, c1.disk) # <__main__.Computer object at 0x7fd7f008cbe0> <__main__.CPU object at 0x7fd7f008cc40> <__main__.Disk object at 0x7fd7f008cc10>
+print(c3, c3.cpu, c3.disk) # <__main__.Computer object at 0x7fd7f008c9a0> <__main__.CPU object at 0x7fd7f008c5e0> <__main__.Disk object at 0x7fd7e00a7bb0>
+```
+
+> c2 为浅拷贝出的对象，c1 与 c2 的 id 不同，但子对象的 id 相同。c3 为深拷贝出的对象，本身以及其持有的对象都全部新 new 出来的
+{: .prompt-info }
+
+
+# 18.11 模块
 
