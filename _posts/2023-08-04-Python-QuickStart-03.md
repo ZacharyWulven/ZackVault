@@ -383,5 +383,157 @@ print(c3, c3.cpu, c3.disk) # <__main__.Computer object at 0x7fd7f008c9a0> <__mai
 {: .prompt-info }
 
 
-# 18.11 模块
+# 19 模块
+* 一个 .py 文件就是一个模块
+
+## 模块中可以包含
+1. 类
+2. 函数
+3. 语句
+
+## 19.1 导入模块
+* import 模块名称 [as 别名]
+* from 模块名称 import 函数/变量/类
+
+
+```python
+import math
+print(id(math))    # 140227327370960
+print(type(math))  # <class 'module'>
+print(math)        # <module 'math' from '/Library/Frameworks/Python.framework/Versions/3.9/lib/python3.9/lib-dynload/math.cpython-39-darwin.so'>
+print(math.pi)     # 3.141592653589793
+print(dir(math))
+
+
+# 自定义模块报错，可尝试模块所在目录右键->Make Directory as Sources Root 解决
+import calc               # 导入模块
+# from calc import add
+
+print(calc.add(2, 3))
+print(calc.div(10, 4))
+```
+
+
+## 19.2 以主程序方式运行
+
+* 每个模块定义中都包含一个记录模块的变量 __name__，程序可以检测该变量，以确定它们在哪个模块运行
+* 如果一个模块不被导入其他程序中运行，那么它可能在解释器顶级模块中运行
+* 顶级模块 __name__ 变量值为 __main__
+
+```python
+
+def add(a, b):
+    return a + b
+
+def div(a, b):
+    return a / b
+
+
+if __name__ == '__main__':  # 只有点击运行 calc 时，这里才执行
+    print('run calc----------')
+    print(add(10, 15))
+```
+
+
+## 19.3 Python 中的包
+* 包是一个分层次的目录结构，它将一组功能相近的模块组织在一起
+* 创建包：PyCharm 右键->New->Python Package
+
+
+### 包的作用
+1. 代码规范
+2. 避免命名冲突
+
+### 包与目录的区别：
+1. 包中含有 `__init__.py` 文件
+2. 目录中通常不包含 `__init__.py` 文件
+
+print('--------Python 中的包---------------------')
+
+## 导入包
+
+```python
+# import 包名称.模块名称（只能导入包名或模块名称）
+# import package1.moduleA
+# print(package1.moduleA.a)
+
+
+# 别名 import
+# mb 是 package1.moduleB 模块的别名
+import package1.moduleB as mb 
+print(mb.a)
+
+
+# from ... import ... 可以导入包、模块、函数、类型、变量等
+from package1 import moduleA
+print(moduleA.a)
+```
+
+
+## 19.4 常用的内置模块
+* sys 与 Python 解释器及其环境相关的标准库
+* time 提供与时间相关的各种函数的标准库
+* os 提供访问操作系统服务功能的标准库
+* calendar 提供日期相关的各种函数的标准库
+* urllib 用于读取来自服务器的数据标准库
+* json 用于 JSON 序列化和反序列化
+* re 用于字符串中执行正则表达式匹配和替换
+* math 提供标准算术运算函数的库
+* decimal 用于进行精确控制运算精度、有效位数和四舍五入操作十进制运算
+* logging 提供了灵活记录事件、错误、警告、调试信息等日志功能
+
+
+```python
+import sys
+
+# getsizeof 获取对象占的字节数
+print(sys.getsizeof(24))    # 28
+print(sys.getsizeof(60))    # 28
+print(sys.getsizeof(True))  # 28
+print(sys.getsizeof(False)) # 24
+
+import time
+print(time.time()) #
+print(time.localtime(time.time())) # time.struct_time(tm_year=2023, tm_mon=8, tm_mday=30, tm_hour=18, tm_min=50, tm_sec=17, tm_wday=2, tm_yday=242, tm_isdst=0)
+
+import math
+print(math.pi)
+```
+
+## 19.5 第三方模块安装以及使用
+* 安装命令：$ pip install 第三方模块名称
+* 导入：import 模块名称
+
+### 安装 schedule
+* pip install schedule
+
+```python
+import schedule
+
+def schedule_job():
+    print('schedule_job')
+
+schedule.every(3).seconds.do(schedule_job)
+while True:
+    schedule.run_pending()
+    time.sleep(1)  # 每 3 秒休眠一秒
+```
+
+
+# 20 文件操作
+
+## 20.1 编码格式
+
+* Python 文件默认编码格式是 `UTF-8`
+
+![image](/assets/images/python/decode.png)
+
+
+## 20.2 读取文件内容
+
+```python
+f = open('a.txt', 'r')
+print(f.readlines())  # ['Hello world！\n', 'Hi!']
+f.close()
+```
 
