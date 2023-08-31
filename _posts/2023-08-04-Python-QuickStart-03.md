@@ -537,3 +537,260 @@ print(f.readlines())  # ['Hello world！\n', 'Hi!']
 f.close()
 ```
 
+
+## 20.3 常用的文件打开模式
+
+* r 以只读模式打开文件，文件指针放在文件开头，读取文件内容
+
+```python
+f = open('a.txt', 'r')
+print(f.readlines())  # ['Hello world！\n', 'Hi!']
+f.close()
+```
+
+* w 以只写模式打开文件，如果文件不存在会创建文件，如果文件存在则覆盖原内容，文件指针放在文件开头
+
+```python
+f = open('b.txt', 'w')
+f.write('opp')
+f.close()
+```
+
+* a 以追加模式打开文件，如果文件不存在会创建文件，文件指针放在文件开头。如果文件存在，则文件指针放在文件末尾
+
+```python
+f = open('b.txt', 'a')
+f.write('python')
+f.close()
+```
+
+* b 以二进制方式打开文件，不能单独使用，需要与其他模式一起使用，例如rb 或 wb
+
+```python
+# 拷贝图片操作
+source = open('yin.jpeg', 'rb')
+
+target = open('cp_yin.jpeg', 'wb')
+target.write(source.read())
+source.close()
+target.close()
+```
+
+* + 以读写模式开发文件，不能单独使用，需要与其他模式一起使用，例如 a+
+
+```python
+f = open('c.txt', 'a+')
+f.write('python')
+f.seek(0)
+print(f.readlines())
+f.close()
+```
+
+
+## 20.4 文件常用方法
+
+```python
+f = open('a.txt', 'r')
+
+
+# 1 read([size]): 从文件中读取 size 个字节或字符内容，若省略 size 则一直读到末尾
+print(f.read())
+f.close()
+
+# 2 readline(): 读取一行
+f = open('a.txt', 'r')
+print('readline:', f.readline())
+
+# 3 readlines() 把每一行作为一个对象，放到一个 list 中返回
+print('readlines', f.readlines())
+f.close()
+
+f = open('a.txt', 'a')
+# 4 write() 将字符串写入文件
+f.write('Test')
+
+# 5 writelines() 将字符串列表写入文件，不添加换行符
+lst = ['Go', 'Rust', 'Python']
+f.writelines(lst)
+f.close()
+
+# 6 seek(offset[,whence]) 把文件指针移动到新位置
+# offset 表示相对于 whence 的位置。offset 为正往结束方向移动，为负往开始方向移动
+# whence 0: 为默认值，从文件头开始计算
+# whence 1: 从当前位置开始计算
+# whence 2: 从文件末尾开始计算
+
+f = open('a.txt', 'r')
+f.seek(2) # seek 到前 2 个字节
+print(f.readlines())
+
+# 7 tell() 返回文件指针的当前位置字节数
+print('tell is', f.tell())
+
+# 8 flush() 把缓冲区的内容写入文件，但不关闭文件
+# 9 close() 把缓冲区的内容写入文件，同时关闭文件，释放文件对象相关资源
+
+f = open('d.txt', 'a')
+f.write('hello')
+f.flush()
+f.write('world')
+f.close()    # d.txt 内容是 helloworld
+```
+
+
+## 20.5 with 使用
+* with 不用手动关闭，离开 with 作用域会自动释放资源，不管是否有异常
+* 格式：with [上下文表达式] as [src_file]:
+1. [上下文表达式] 的结果是一个上下文管理器
+2. 什么是上下文管理器？即一个类实现了 `__enter__()` 和 `__exit__()` 方法，称为这个类遵守了上下文管理器协议
+
+
+```python
+# 自定义上下文管理器类
+class CustomManager:
+
+    def __enter__(self):
+        print('call 上下文管理器 __enter__ ')
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        print('call 上下文管理器 __exit__ ')
+
+    def show(self):
+        print('call show')
+
+
+with CustomManager() as fp: # 相当于 fp=CustomManager()
+    fp.show()
+
+
+# 这里 open('d.txt', 'r') 是上下文管理器表达式
+with open('d.txt', 'r') as fp:
+    print(fp.readlines())
+
+# 使用 with 实现图片复制
+with open('yin.jpeg', 'rb') as src:
+    with open('with_yin.jpeg', 'wb') as target:
+        target.write(src.read())
+```
+
+
+# 21 os 常用函数
+* os 模块是 Python 内置的与操作系统功能和文件系统功能相关的模块
+* os 模块中语句的执行结果通常与操作系统有关，在不同操作系统运行，得到的结果可能不一样
+* os 与 os.path 用于对目录或文件进行操作
+
+```python
+import os
+
+# 1 执行系统命令
+# os.system('ls')
+
+# 2 打开应用程序
+# Windows 系统
+# os.startfile('~/Applications/GoLand.app')
+
+# Mac 系统
+import subprocess
+# subprocess.call(['open', '/Applications/Xcode.app'])
+
+
+# os 操作目录相关函数
+
+# 3 getcwd() 返回当前目录
+print(os.getcwd())
+
+# 4 listdir(path) 返回指定路径下文件和目录信息
+print(os.listdir('./'))
+
+# 5 mkdir(path[,mode]) 创建目录, 如果目录已存在会报错
+# os.mkdir('./test2') # 在当前目录创建 test2 目录
+
+# 6 makedirs(path1/path2...[,mode]) 创建多级目录, 如果目录已存在会报错
+# os.makedirs('./A/B/C')
+
+# 7 rmdir(path) 删除目录，如果目录不存在会报错
+# os.rmdir('./test2')
+
+# 8 removedirs(path1/path2...) 删除多级目录，如果目录不存在会报错
+# os.removedirs('./A/B/C')
+
+# 9 chdir() 更改当前工作目录
+os.chdir('./package1')
+print(os.getcwd())
+```
+
+
+## os.path 模块操作目录相关函数
+
+
+```python
+import os.path
+
+# 1 abspath(path) 获取文件或目录的绝对路径
+print(os.path.abspath('./')) # 当前目录的绝对路径
+
+# 2 exists(path) 判断文件或目录是否存在，存在返回 True，不存在返回 False
+print(os.path.exists('d.txt'), os.path.exists('13_files.py'))
+
+# 3 join(path, name) 将目录与目录或文件名拼接起来, 类似 OC 的 string appendComponentPath
+print(os.path.join('./package1', 'calc.py'))  # ./package1/calc.py
+
+# 4 split 分类文件名与文件名之前的 path
+print(os.path.split('./package1/calc.py'))   # ('./package1', 'calc.py')
+
+# 5 splitext 分类文件名称与扩展名
+print(os.path.splitext('calc.py')) # ('calc', '.py')
+
+# 6 basename() 从目录中提取文件名
+print(os.path.basename('./calc.py'))  # calc.py
+
+# 7 dirname() 从一个路径中提取文件路径，不包括文件名
+print(os.path.dirname('./calc.py'))   # .
+
+# 8 isdir() 判断是否为一个路径
+print(os.path.isdir('./package1'))  # True
+```
+
+## 获取当前目录的所有 Python 文件
+
+```python
+import os
+
+print('------- 获取当前目录的所有 Python 文件------------------')
+path = os.getcwd()
+lst = os.listdir(path)
+
+for file in lst:
+    if file.endswith('.py'):
+        print(file)
+```
+
+
+## walk 遍历指定目录下所有文件和目录
+
+```python
+import os
+
+path = os.getcwd()
+lst = os.listdir(path)
+
+print('-------获取当前目录的文件和子目录-------------------------')
+lst_file = os.walk(path)
+print(lst_file)
+for dirpath, dirname, filename in lst_file:
+    print('--------------------------------')
+    print('dirpath', dirpath)
+    print('dirname', dirname)
+    print('filename', filename)
+    
+    print('for dir in dirname begin')
+    for dir in dirname:
+        print(os.path.join(dirpath, dir))
+    print('for dir in dirname end')
+
+    print('for file in filename begin')
+    for file in filename:
+        print(os.path.join(dirpath, file))
+    print('for file in filename end')
+```
