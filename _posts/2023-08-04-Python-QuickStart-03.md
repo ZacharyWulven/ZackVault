@@ -794,3 +794,21 @@ for dirpath, dirname, filename in lst_file:
         print(os.path.join(dirpath, file))
     print('for file in filename end')
 ```
+
+# 22 打包
+
+## 安装打包工具
+
+```shell
+$ /Library/Frameworks/Python.framework/Versions/3.9/bin
+$  pip install PyInstaller
+```
+
+## 生成可执行文件
+
+```shell
+$ pyinstaller -F xxx/xxx.py 
+```
+
+可执行文件输出位置 `16311 INFO: Copying bootloader EXE to /xxx/dist/stusystem`
+
