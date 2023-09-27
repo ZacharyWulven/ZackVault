@@ -1,6 +1,6 @@
 ---
 layout: post
-title: RustGuide-14
+title: RustGuide-14-Character
 date: 2023-04-06 16:45:30.000000000 +09:00
 categories: [Rust]
 tags: [Rust]

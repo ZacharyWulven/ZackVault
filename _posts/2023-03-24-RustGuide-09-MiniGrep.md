@@ -1,6 +1,6 @@
 ---
 layout: post
-title: RustGuide-09
+title: RustGuide-09-MiniGrep
 date: 2023-03-24 16:45:30.000000000 +09:00
 categories: [Rust]
 tags: [Rust]

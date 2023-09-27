@@ -1,6 +1,6 @@
 ---
 layout: post
-title: RustGuide-01
+title: RustGuide-01-Basic
 date: 2023-03-09 16:45:30.000000000 +09:00
 categories: [Rust]
 tags: [Rust]

@@ -1,6 +1,6 @@
 ---
 layout: post
-title: RustGuide-04
+title: RustGuide-04-Crate
 date: 2023-03-15 16:45:30.000000000 +09:00
 categories: [Rust]
 tags: [Rust]

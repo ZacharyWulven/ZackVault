@@ -1,6 +1,6 @@
 ---
 layout: post
-title: RustGuide-12
+title: RustGuide-12-Pointer
 date: 2023-04-01 16:45:30.000000000 +09:00
 categories: [Rust]
 tags: [Rust]

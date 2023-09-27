@@ -1,6 +1,6 @@
 ---
 layout: post
-title: RustGuide-16
+title: RustGuide-16-AdvanceCharacter
 date: 2023-04-10 16:45:30.000000000 +09:00
 categories: [Rust]
 tags: [Rust]

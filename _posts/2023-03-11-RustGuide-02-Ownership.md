@@ -1,6 +1,6 @@
 ---
 layout: post
-title: RustGuide-02
+title: RustGuide-02-Ownership
 date: 2023-03-11 16:45:30.000000000 +09:00
 categories: [Rust]
 tags: [Rust]

@@ -1,6 +1,6 @@
 ---
 layout: post
-title: RustGuide-13
+title: RustGuide-13-Concurrent
 date: 2023-04-03 16:45:30.000000000 +09:00
 categories: [Rust]
 tags: [Rust]

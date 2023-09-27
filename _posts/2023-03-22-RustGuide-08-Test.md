@@ -1,6 +1,6 @@
 ---
 layout: post
-title: RustGuide-08
+title: RustGuide-08-Test
 date: 2023-03-22 16:45:30.000000000 +09:00
 categories: [Rust]
 tags: [Rust]

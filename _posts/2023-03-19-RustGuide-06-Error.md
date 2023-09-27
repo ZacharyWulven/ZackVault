@@ -1,6 +1,6 @@
 ---
 layout: post
-title: RustGuide-06
+title: RustGuide-06-Error
 date: 2023-03-19 16:45:30.000000000 +09:00
 categories: [Rust]
 tags: [Rust]

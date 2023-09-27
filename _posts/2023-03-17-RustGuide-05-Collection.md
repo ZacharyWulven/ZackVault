@@ -1,6 +1,6 @@
 ---
 layout: post
-title: RustGuide-05
+title: RustGuide-05-Collection
 date: 2023-03-17 16:45:30.000000000 +09:00
 categories: [Rust]
 tags: [Rust]

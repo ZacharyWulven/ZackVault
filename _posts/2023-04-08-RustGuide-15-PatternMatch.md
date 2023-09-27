@@ -1,6 +1,6 @@
 ---
 layout: post
-title: RustGuide-15
+title: RustGuide-15-PatternMatch
 date: 2023-04-08 16:45:30.000000000 +09:00
 categories: [Rust]
 tags: [Rust]

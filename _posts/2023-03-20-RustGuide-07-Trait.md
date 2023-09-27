@@ -1,6 +1,6 @@
 ---
 layout: post
-title: RustGuide-07
+title: RustGuide-07-Trait
 date: 2023-03-20 16:45:30.000000000 +09:00
 categories: [Rust]
 tags: [Rust]
