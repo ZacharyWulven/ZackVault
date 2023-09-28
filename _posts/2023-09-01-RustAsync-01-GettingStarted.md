@@ -204,7 +204,7 @@ fn main() {
 
 ````
 
-# 2 幕后原理：执行 Future 和任务
+# 2.1 幕后原理：执行 Future 和任务
 
 ### Future Trait
 * `Future Trait` 是 `Rust Async` 编程的核心
@@ -385,7 +385,7 @@ trait Future {
 }
 ```
 
-# 3 使用 `Waker` 唤醒任务
+# 2.2 使用 `Waker` 唤醒任务
 
 ## `Waker` 类型的作用
 * `Future` 在第一次 `poll` 时通常无法完成任务，所以 `Future` 需要保证在准备好取得更多进展后（比如说 `socket` 有数据了），`Future` 可以再次被 `poll`
@@ -484,5 +484,34 @@ impl TimerFuture {
 ```
 
 
+* main.rs
 
+```rust
+use std::time::Duration;
+use futures::executor::block_on;
+use timer_future_02::TimerFuture;
+
+fn main() {
+    let future = TimerFuture::new(Duration::new(3, 0));
+    block_on(future);
+}
+```
+
+# 2.3 构建一个执行器（Executor）
+
+## `Future` 的执行者（Executor）
+
+> `Future` 是惰性的，除非驱动它们来完成，否则就什么也不做
+{: .prompt-info }
+
+
+* 其中一种取得方式就是在 `async` 中使用 `.await`，但者只是把问题推到了上一层面，也就是谁来执行顶层 `async` 函数返回的 `Future` 呢？
+1. 所以说我们需要一个 `Future` 的执行者
+* `Future` 执行者会获取一系列顶层的 `Future`，并通过在 `Future` 可以有进展的时候调用 `poll` 方法，来驱动这些 `Future` 运行直到完成
+* 通常执行者会先对 `Future` 进行一次 `poll`，以便开始，而当 `Future` 通过调用 `wake()` 表示它们已经准备好取得进展时，它们就会被放回到一个队列里，
+然后 `poll` 方法再次被调用，重复此操作直到 `Future` 完成
+
+## 例子
+* 构建简单的执行者，可以运行大量的顶层 `Future` 来并发的将它们完成
+* 需要使用 `futures crate 的 ArcWake trait`，它提供了简单的方式用来组建 `Waker`
 
