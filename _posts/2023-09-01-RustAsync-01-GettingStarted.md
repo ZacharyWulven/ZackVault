@@ -58,14 +58,45 @@ tags: [Rust]
 3. 允许重用同步代码，代码无需大改，无需特定的编程模型
 4. 有些系统支持修改线程优先级
 
+
 * Async
 1. 显著降低内存和 CPU 开销
 2. 同等条件下，支持比线程多几个数量级的任务（少数线程支撑大量任务）
 3. 可执行文件大（需要生成状态机，每个可执行文件捆绑一个异步运行时）
 
 
-> Note：`async` 并不似比线程好，只是与线程不同而已
+* 使用 OS 线程下载网页，然而下载网页是一项小任务；为如此少量的工作创建一个线程是相当浪费的。对于更大的应用程序，它很容易成为瓶颈。
+
+```rust
+fn get_two_sites() {
+    // Spawn two threads to do work.
+    let thread_one = thread::spawn(|| download("https://www.foo.com"));
+    let thread_two = thread::spawn(|| download("https://www.bar.com"));
+
+    // Wait for both threads to complete.
+    thread_one.join().expect("thread one panicked");
+    thread_two.join().expect("thread two panicked");
+}
+```
+
+* 在异步Rust中，我们可以同时运行这些任务，而无需额外的线程，在这里，没有创建额外的线程。此外，所有函数调用都是静态调度的，并且没有堆分配！
+
+```rust
+async fn get_two_sites_async() {
+    // Create two different "futures" which, when run to completion,
+    // will asynchronously download the webpages.
+    let future_one = download_async("https://www.foo.com");
+    let future_two = download_async("https://www.bar.com");
+
+    // Run both futures to completion at the same time.
+    join!(future_one, future_two);
+}
+```
+
+
+> Note：`async` 并不是比线程好，只是与线程不同而已
 {: .prompt-info }
+
 
 
 ## Rust Async 目前状态
@@ -73,7 +104,7 @@ tags: [Rust]
 * 特点
 1. 针对典型并发任务，性能出色
 2. 与高级语言特性频繁交互（例如生命周期，pinning）
-3. 同步和异步代码间、不同运行时的异步代码间存在兼容性约束（因为官方没有运行时，运行时是社区提供的，所以可能导致有兼容问题）
+3. 同步和异步代码间、不同运行时的异步代码间存在兼容性约束（`因为官方没有运行时，运行时是社区提供的`，所以可能导致有兼容问题）
 4. 由于不断进化，未来维护代码负担可能会重一些
 
 ## 语言和库的支持
@@ -178,7 +209,7 @@ async fn sing_song(song: Song) {}
 async fn dance() {}
 
 async fn learn_and_sing() {
-    let song = learn_song().await;
+    let song = learn_song().await; // .await 后执行下边的 sing_song
     sing_song(song).await;
 }
 
@@ -198,7 +229,7 @@ fn main() {
     // block_on(sing_song(song));
     // block_on(dance());
     
-    // 使用 await
+    // 改为使用 await
     block_on(async_main());
 }
 
@@ -255,7 +286,7 @@ trait SimpleFuture {
 * 当一个 `Future` 将要取得更多进展时候，就会调用 `wake() 函数`
 * 当 `wake() 函数` 被调用时：
 1. 执行器（executer）就会取得 `Future` 再次调用 `poll` 函数，以便 `Future` 能取得更多进展，最大进展就是 `Future` 的完成，把值取出来
-* 如果没有 `wake() 函数`，执行器就不知道特定的 `Future` 何时能取得进展，就只能不断地调用 `poll`
+* 如果没有 `wake() 函数`，执行器就不知道特定的 `Future` 何时能取得进展，就只能不断地调用 `poll`，这样是低效率的
 * 通过 `wake() 函数`，执行器就能确切的知道哪些 `Future` 已准备好进行 `poll` 的调用
 
 
@@ -441,7 +472,7 @@ impl Future for TimerFuture {
                 保证 Future 可以再次被 poll，并看到 `completed = true` 
 
                 每次 Future 被 poll 时,都把 waker clone 一下，
-                这时因为 TimerFuture 可在执行者的任务间移动，这会导致过期的 waker
+                这是因为 TimerFuture 可在执行者的任务间移动，这会导致过期的 waker
                 指向错误的任务，从而阻止了 TimerFuture 正确的唤醒
 
                 Note：可以使用 `Waker::will_wake` 函数来检查这一点，为了简单这里我们就省略了
@@ -515,3 +546,223 @@ fn main() {
 * 构建简单的执行者，可以运行大量的顶层 `Future` 来并发的将它们完成
 * 需要使用 `futures crate 的 ArcWake trait`，它提供了简单的方式用来组建 `Waker`
 
+
+* main.rs (lib.rs 见上边 TimerFuture 实现)
+
+```rust
+use futures::executor::block_on;
+use futures::{
+    future::{BoxFuture, FutureExt},
+    task::{waker_ref, ArcWake},
+};
+use std::{
+    future::Future,
+    sync::mpsc::{sync_channel, Receiver, SyncSender},
+    sync::{Arc, Mutex},
+    task::Context,
+    thread,
+    time::Duration,
+};
+
+// lib.rs 中的 TimerFuture
+use timer_future_02::TimerFuture;
+
+
+/// 任务执行者，它会从 channel 收到任务并运行它们
+struct Executor {
+    ready_queue: Receiver<Arc<Task>>,
+}
+
+/// `Spawner` 产生新的 Futures 任务，并把任务放到 channel 中
+#[derive(Clone)]
+struct Spawner {
+    task_sender: SyncSender<Arc<Task>>,
+}
+
+/// 一个任务可以重新安排自己，以便被一个 `Executor` 来进行 poll
+struct Task {
+    /// In-progress future that should be pushed to completion.
+    ///
+    /// The `Mutex` is not necessary for correctness, since we only have
+    /// one thread executing tasks at once. However, Rust isn't smart
+    /// enough to know that `future` is only mutated from one thread,
+    /// so we need to use the `Mutex` to prove thread-safety. A production
+    /// executor would not need this, and could use `UnsafeCell` instead.
+    /// 
+    /// 正在进行中的 Future，它应该被推向完成
+    /// `Mutex` 对应正确性来说不是必要的，因为我们同时只有一个线程在执行任务
+    /// 尽管如此，Rust 不够聪明，它无法指定 future 只由一个线程来修改
+    /// 所以我们需要使用 `Mutex` 来保证线程的安全
+    /// 生成版本的执行者不需要这个，可以使用 `UnsafeCell` 来代替
+    future: Mutex<Option<BoxFuture<'static, ()>>>,
+
+    /// Handle to place the task itself back onto the task queue.
+    /// 能把任务本身放回任务队列的处理器
+    task_sender: SyncSender<Arc<Task>>,
+}
+
+/// 最开始会调用这个函数，返回一个执行者、一个任务生成器、和一个管道，
+/// 执行者就是在管道的接收端
+/// 任务生成器就是在管道的发送端，往通道里发送任务
+fn new_executor_and_spawner() -> (Executor, Spawner) {
+    // 在 channel 中允许同时排队的最大任务数
+    // 这只是让 sync_channel 激活，并不会出现在真实的执行者中
+    const MAX_QUEUED_TASKS: usize = 10_000;
+    let (task_sender, ready_queue) = sync_channel(MAX_QUEUED_TASKS);
+    println!("[{:?}] 生成 Executor 和 Spawner（含发送端、接收端）...", thread::current().id());
+    (Executor { ready_queue }, Spawner { task_sender })
+}
+
+impl Spawner {
+    fn spawn(&self, future: impl Future<Output = ()> + 'static + Send) {
+        let future = future.boxed();
+        /// 将 future 包装成 任务
+        let task = Arc::new(Task {
+            future: Mutex::new(Some(future)),
+            task_sender: self.task_sender.clone(),
+        });
+        println!("[{:?}] 将 Future 组成 Task，放入 Channel ...", thread::current().id());
+        /// 发送到通道
+        self.task_sender.send(task).expect("too many tasks queued");
+    }
+}
+
+impl ArcWake for Task {
+    fn wake_by_ref(arc_self: &Arc<Self>) {
+        // Implement `wake` by sending this task back onto the task channel
+        // so that it will be polled again by the executor.
+        // 通过将该任务发送回任务 Channel 来实现 `wake`
+        // 以便他将会被执行者再次进行 poll
+        println!("[{:?}] call wake_by_ref ...", thread::current().id());
+
+        let cloned = arc_self.clone();
+        arc_self
+            .task_sender
+            .send(cloned)
+            .expect("too many tasks queued");
+    }
+}
+
+impl Executor {
+    fn run(&self) {
+        println!("[{:?}] Executor running...", thread::current().id());
+        // 从通道不断地接收任务，直到没有任务再继续往下走
+        while let Ok(task) = self.ready_queue.recv() {
+            println!("[{:?}] 接收到任务...", thread::current().id());
+            // Take the future, and if it has not yet completed (is still Some),
+            // poll it in an attempt to complete it.
+            // 获得 future，如果它还没有完成（仍然是 Some），
+            // 对它进行 poll，以尝试完成它
+            let mut future_slot = task.future.lock().unwrap();
+            if let Some(mut future) = future_slot.take() {
+                
+                println!("[{:?}] 从任务中取得 Future...", thread::current().id());
+                // Create a `LocalWaker` from the task itself
+                // 从任务本身创建一个 `LocalWaker`
+                
+                let waker = waker_ref(&task); 
+                println!("[{:?}] 获得 waker by ref ...", thread::current().id());
+
+                let context = &mut Context::from_waker(&waker);
+                println!("[{:?}] 获得 context 准备进行 poll() ...", thread::current().id());
+                // `BoxFuture<T>` is a type alias for
+                // `Pin<Box<dyn Future<Output = T> + Send + 'static>>`.
+                // We can get a `Pin<&mut dyn Future + Send + 'static>`
+
+                // from it by calling the `Pin::as_mut` method.
+                // `BoxFuture<T>` 是 `Pin<Box<dyn Future<Output = T> + Send + 'static>>` 的类型别名
+                // 我们可以通过调用 `Pin::as_mut` 从它获得 `Pin<&mut dyn Future + Send + 'static>`
+                if future.as_mut().poll(context).is_pending() {
+                    // We're not done processing the future, so put it
+                    // back in its task to be run again in the future.
+                    // 还没有对 Future 完成处理，所以把它放回它的任务
+                    // 以便在未来再次运行
+                    *future_slot = Some(future);
+                    println!("[{:?}] Poll::Pending ====", thread::current().id());
+                } else {
+                    // 当返回 ready 后，这个通道就不会再有任务了，因为 main 函数中 spawner drop 操作
+                    // 这时，这个 while 循环就停止了
+                    println!("[{:?}] Poll::Ready....", thread::current().id());
+                }
+            }
+        }
+        println!("[{:?}] Executor run 结束", thread::current().id());
+    }
+}
+
+fn main() {
+    let (executor, spawner) = new_executor_and_spawner();
+
+    // Spawn a task to print before and after waiting on a timer.
+    // 生成一个任务，让其等待一个 timer 前后进行打印
+    spawner.spawn(async {
+        println!("[{:?}] howdy!", thread::current().id());
+        // 等待 timer future 在 2s 后完成
+        TimerFuture::new(Duration::new(2, 0)).await;
+        println!("[{:?}] spawner async done!", thread::current().id());
+    });
+
+    // 丢弃生成器以便我们的执行者知道它已经完成了
+    drop(spawner);
+    println!("[{:?}] Drop Spawner!", thread::current().id());
+
+
+    // Run the executor until the task queue is empty.
+    // This will print "howdy!", pause, and then print "done!".
+    // 运行执行者知道任务队列尾空为止
+    // 这会打印 “howdy!”, 暂停，然后打印 “done!”.
+    executor.run();
+}
+```
+
+* 大致流程
+
+![image](/assets/images/rust/async_e_01.png)
+
+![image](/assets/images/rust/async_e_02.png)
+
+![image](/assets/images/rust/async_e_03.png)
+
+
+# 2.4 执行者和系统 IO
+* 通过 `SocketRead` 例子讲述，这个 `future` 会读取 `socket` 上可用的数据，如果没有数据，它就屈服于执行者（即它听执行者的）
+1. 具体怎么听呢：就是请求当 `socket` 再次可读时，唤醒这个 `Future` 的任务
+
+* 而本例中我们不知道 `Socket` 类型是如何实现的，尤其不知道 `set_readable_callback` 函数如何实现，那么如果在 `socket` 再次可读时安全调用 `wake()` 呢？
+1. 一种简单粗暴办法是使用一个线程不断检查 `socket` 是否可读（低效的）
+
+* 而实际中，这个问题是通过与 `IO` 感知的系统阻塞原语（primitive）的集成来解决的
+1. 例如 `Linux 的 epoll`，`FreeBSD 和 MacOS 的 kqueue`，`Window 的 IOCP 和 Fuchsia 上的 ports`
+2. 所有这些都是通过 Rust 跨平台的 `mio crate` 来暴露的
+3. 这些原语（primitive）都允许线程阻塞多个异步 `IO` 事件，并在其中一个事件完成后返回
+
+
+* `Future` 执行者可以使用这些原语来提供异步 `IO` 对象，
+1. 如 `socket`，就可以当特定 `IO` 事件发生时通过配置回调来运行。
+2. 具体可参考本章开头的官方文档中的 `2.4 节`
+
+```rust
+pub struct SocketRead<'a> {
+    socket: &'a Socket,
+}
+
+impl SimpleFuture for SocketRead<'_> {
+    type Output = Vec<u8>;
+
+    fn poll(&mut self, wake: fn()) -> Poll<Self::Output> {
+        if self.socket.has_data_to_read() {
+            // The socket has data -- read it into a buffer and return it.
+            Poll::Ready(self.socket.read_buf())
+        } else {
+            // The socket does not yet have data.
+            //
+            // Arrange for `wake` to be called once data is available.
+            // When data becomes available, `wake` will be called, and the
+            // user of this `Future` will know to call `poll` again and
+            // receive data.
+            self.socket.set_readable_callback(wake);
+            Poll::Pending
+        }
+    }
+}
+```
