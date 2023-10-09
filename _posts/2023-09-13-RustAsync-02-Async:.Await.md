@@ -498,5 +498,18 @@ pub fn main() {
 ```
 
 ## 小结
+* 如果 `T` 实现了 `Unpin（默认情况）`，则 `Pin<'a, T>` 与 `&'a mut T` 完全等价 
+1. `Pin` 不 `Pin` 它没有卵用
+2. `Unpin` 意味着该类型如果被 `Pin` 了，那么它也是可以移动的，所以 `Pin` 对这种类型不起作用
+* 如果 `T` 实现了 `!Unpin`（就是 Pin 的），那么把 `&mut T` 变成 `Pin` 的 `T`，就需要 `unsafe` 操作
+* 大部分标准库类型都实现了 `Unpin`，Rust 里大部分正常类型也是。但由 `async/await` 生成的 `Future` 是个例外
+* 可以使用特性标记为类型添加一个 `!Unpin` 绑定（最新版），或者通过添加 `std::marker:PhantomPinned` 到类型上（稳定版）
 
+* 可以将数据 `Pin` 到 `Stack` 或 `Heap` 上
+* 把 `!Unpin` 对象 `Pin` 到 `Stack` 上需要 `unsafe` 操作
+* 把 `!Unpin` 对象 `Pin` 到 `Heap` 上是`不`需要 `unsafe` 操作
+1. 它有个快捷操作：即使用 `Box::pin`
+
+> 重要：针对已经 `Pin` 的数据，如果 `T` 是 `!Unpin` 的，则需要保证它从被 `Pin` 后，内存一直有效且不会调整其用途，直到 `drop` 被调用
+{: .prompt-info }
 
