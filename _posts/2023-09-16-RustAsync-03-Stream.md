@@ -302,6 +302,143 @@ async fn add_two_streams(
 * `Fuse::terminated()` 允许构建空的、已完成的 `Future`，后续可以为它填充一个需要运行的 `Future`
 1. 适用场景：在 `select` 循环里产生并且需要在这运行的任务
 
+```rust
+use futures::{
+    future::{Fuse, FusedFuture, FutureExt},
+    stream::{FusedStream, Stream, StreamExt},
+    pin_mut,
+    select,
+};
+
+async fn get_new_num() -> u8 { /* ... */ 5 } // 返回一个数 5
+
+async fn run_on_new_num(_: u8) { /* ... */ } // 运行在这个新的数上
+
+// 循环异步函数
+async fn run_loop(
+    mut interval_timer: impl Stream<Item = ()> + FusedStream + Unpin, // 定时器
+    starting_num: u8,
+) {
+    let run_on_new_num_fut = run_on_new_num(starting_num).fuse(); // 返回一个 FusedFuture
+    let get_new_num_fut = Fuse::terminated();                     // 创建一个空的已经完成的 Future，后续可为它填充一个要运行的 Future
+    pin_mut!(run_on_new_num_fut, get_new_num_fut);
+    loop {
+        select! {
+            // select_next_some 如果返回一些值才会运行里边的代码
+            () = interval_timer.select_next_some() => {
+                // The timer has elapsed. Start a new `get_new_num_fut`
+                // if one was not already running.
+                // 如果定时器时间已过，没有正在运行的任务，
+                // 这时就开始一个新的 `get_new_num_fut`，就是使用 Fuse::terminated() 创建的那个空 Future
+                
+                if get_new_num_fut.is_terminated() { // 判断是否终止，如果已终止就给它设置一个值
+                    get_new_num_fut.set(get_new_num().fuse()); // 这个 Future 就相对于在 select 中创建的 Future
+                }
+            },
+            new_num = get_new_num_fut => { 
+                // A new number has arrived -- start a new `run_on_new_num_fut`,
+                // dropping the old one.
+                // 新的数到达了，就开始一个新的 `run_on_new_num_fut`
+                // 丢弃旧的
+                run_on_new_num_fut.set(run_on_new_num(new_num).fuse());
+            },
+            // Run the `run_on_new_num_fut`
+            // 运行 `run_on_new_num_fut`
+            () = run_on_new_num_fut => {},
+            // panic if everything completed, since the `interval_timer` should
+            // keep yielding values indefinitely.
+            // 如果完成了就 panic， `interval_timer` 应该一直产生值
+            complete => panic!("`interval_timer` completed unexpectedly"),
+        }
+    }
+}
+```
+
+* 当同一个 `Future` 的多个副本需要同时运行时，使用 `FuturesUnordered` 类型
+
+```rust
+use futures::{
+    future::{Fuse, FusedFuture, FutureExt},
+    stream::{FusedStream, FuturesUnordered, Stream, StreamExt},
+    pin_mut,
+    select,
+};
+
+async fn get_new_num() -> u8 { /* ... */ 5 }
+
+async fn run_on_new_num(_: u8) -> u8 { /* ... */ 5 }
+
+async fn run_loop(
+    mut interval_timer: impl Stream<Item = ()> + FusedStream + Unpin,
+    starting_num: u8,
+) {
+    // 创建一个空的 FuturesUnordered 类型，可容纳同类型 Future 容器
+    let mut run_on_new_num_futs = FuturesUnordered::new();  
+    
+    // 添加一个 Future 到容器中
+    run_on_new_num_futs.push(run_on_new_num(starting_num)); 
+    
+    let get_new_num_fut = Fuse::terminated();
+    pin_mut!(get_new_num_fut);
+    loop {
+        select! {
+            () = interval_timer.select_next_some() => {
+                // The timer has elapsed. Start a new `get_new_num_fut`
+                // if one was not already running.
+                if get_new_num_fut.is_terminated() {
+                    get_new_num_fut.set(get_new_num().fuse());
+                }
+            },
+            new_num = get_new_num_fut => {
+                // A new number has arrived -- start a new `run_on_new_num_fut`.
+                // 新的数到达了，就开始一个新的 `run_on_new_num_fut`
+                run_on_new_num_futs.push(run_on_new_num(new_num));
+            },
+            // Run the `run_on_new_num_futs` and check if any have completed
+            // 检查一下 run_on_new_num_futs 里边是否有任意一个 Future 已经完成了
+            // 如果有的话旧打印后边的代码
+            res = run_on_new_num_futs.select_next_some() => {
+                println!("run_on_new_num_fut returned {:?}", res);
+            },
+            // panic if everything completed, since the `interval_timer` should
+            // keep yielding values indefinitely.
+            complete => panic!("`interval_timer` completed unexpectedly"),
+        }
+    }
+}
+
+```
+
+# 7 一些问题的临时解决方案
+
+## 7.1 `async` 块中的 ？
+* `async` 块中使用 ? 是比较常见的，但是 `async` 块的返回类型没有明确说明，这种情况就可能导致编译器无法推断出 `async` 块的错误类型
+
+
+* 下边代码 `Error`, 无法推断 `Result` 上边的 `E` 的类型
+```rust
+#![allow(unused)]
+fn main() {
+    struct MyError;
+    
+    async fn foo() -> Result<(), MyError> {
+        Ok(())
+    }
+
+    async fn bar() -> Result<(), MyError> {
+        Ok(())
+    }
+    
+    // 目前无法给 fut 一个类型，也无法指明其类型
+    let fut = async {
+        foo().await?;
+        bar().await?;
+        Ok(()) // Error, 无法推断 Result 上边的 E 的类型
+    }
+}
+```
+
+* 临时解决
 
 
 
