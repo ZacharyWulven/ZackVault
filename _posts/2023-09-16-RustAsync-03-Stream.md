@@ -434,12 +434,132 @@ fn main() {
         foo().await?;
         bar().await?;
         Ok(()) // Error, 无法推断 Result 上边的 E 的类型
-    }
+        Ok::<(), MyError>(()) // 临时解决方案
+    };
 }
 ```
 
-* 临时解决
+> 临时解决方案：使用 `turbofish` 运算符，为 `async 块` 提供成功和错误类型。返回这样即可： `Ok::<(), MyError>(())`
+{: .prompt-info }
 
+
+## 7.2 Send Trait Approximation
+* 有些 `async fn` 状态机是可以安全的跨线程发送的，而有些则不行
+* `async fn` 是否是 `Send` 的，取决于在 `.await` 点是否持有非 `Send` 的类型（看它持有的里边是否有非 Send 类型的）
+* 当值可能在跨越 `.await` 点被持有时，编译器会尽力近似估算，但这种估算在很多地方显得过于保守了
+
+
+```rust
+use std::rc::Rc;
+#[derive(Default)]
+struct NotSend(Rc<()>); // 不是 Send 的，里边有个 Rc
+async fn bar() {}
+async fn foo() {
+    //  因为 NotSend::default() 这样调用，只在 foo 里出现了一下，这样是没有问题的，编译器不会报错
+    // NotSend::default();
+    
+    // 但如果我们获取 NotSend 的返回值，下边 main 函数就会报错
+    // Error: future returned by `foo` is not `Send
+    // let x = NotSend::default();
+
+    // 临时解决方案：引入块作用域
+    {
+        let x = NotSend::default();
+
+    }
+
+    bar().await;
+}
+
+fn require_send(_: impl Send) {}
+
+fn main() {
+    require_send(foo());
+}
+```
+
+> 临时解决方案：引入块作用域，把 `non-Send` 变量隔离
+{: .prompt-info }
+
+## 7.3 Recursion（递归）
+* 在内部，`async fn` 会创建一个状态机类型，它包含每个被 `.await` 的子 `Future`
+1. 这点就有点麻烦，因为状态机是需要包含其本身的
+
+```rust
+async fn foo() {
+    step_one().await;
+    step_two().await;
+}
+// 编译后对 foo 函数解析，产生的类型
+enum Foo {
+   First(StepOne),
+   Second(StepTwo),
+}
+
+
+
+async fn recursive() {
+    recursive().await;
+    recursive().await;
+}
+/*
+    编译后对 recursive 函数解析，产生的类型
+    这样就不行了，因为这样会产生一个无限大小的类型，编译器无法知道其大小，这时就会报错
+    Error: a recursive `async fn` must be rewritten to return a boxed `dyn Future`
+*/
+enum Recursive {
+    First(Recursive),
+    Second(Recursive),
+}
+```
+
+* 递归的临时解决方案：使用 `Box`，并把 `recursive` 放入非 `async` 的函数，它会返回 `.boxed() async 块`
+
+```rust
+// .toml
+[dependencies]
+futures = "0.3.21"
+
+
+// main.rs
+use futures::future::{BoxFuture, FutureExt};
+
+fn recursive() -> BoxFuture<'static, ()> {
+    async move {
+        recursive().await;
+        recursive().await;
+    }.boxed()
+}
+```
+
+## 7.4 async in Traits
+* 目前 `async fn` 不可以在 `trait 的定义` 中使用
+
+* 临时解决方案：使用第三方 `crate`，它叫 `async-trait`
+
+
+# 8 async 生态
+* Rust 在 `async` 这块提供的其实不多，Rust 目前只提供编写 `async` 代码的基本要素，标准库中尚未提供执行器、任务、反应器、组合器、以及低级 `I/O future` 和 `trait`，
+而社区提供的 `async` 生态系统填补了这些空白
+
+## async runtime
+* `async` 运行时是用于执行 `async` 应用程序的库
+* 运行时通常是将一个反应器与一个或多个执行器捆绑在一起
+* 反应器为`异步 I/O`、进程间通信、计时器等外部事件提供订阅机制
+* 在 `async` 运行时中，订阅者通常是代表`低级别 I/O 操作的 Future`
+* 执行者（器）负责安排和执行任务
+1. 它们跟踪正在运行和暂停的任务，对 Future 进行 poll 直到完成，并在任务能够取得进展时唤醒任务
+2. `执行者`一词经常与`运行时`互换使用
+* 我们使用 `生态系统` 一词来描述一个与兼容 `trait` 和特性捆绑在一起的运行时
+
+
+## 社区提供的 `async crates`
+* 提供了 `futures crate`：里边包含 `Stream、Sink、AsyncRead、AsyncWrite 等 trait`，以及组合器等工具，这些可能最终成为标准库的一部分。
+* `futures crate` 有自己的执行器，但没有自己的反应器，因此它不支持 `async I/O` 或计时器相关 `Future` 的执行，因此它并不认为是完整的运行时
+* 通常的选择是：使用另外一个 `crate` 中的执行器与 `futures crate` 提供的工具一起使用
+
+## 比较流行的运行时
+1. Tokio：
 
 
 
