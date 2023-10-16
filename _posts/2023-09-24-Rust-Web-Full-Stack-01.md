@@ -1,6 +1,6 @@
 ---
 layout: post
-title: Rust Web 全栈开发教程
+title: Rust Web 全栈开发教程-开胃菜
 date: 2023-09-24 16:45:30.000000000 +09:00
 categories: [Rust]
 tags: [Rust]
