@@ -154,7 +154,7 @@ $ cargo run --bin server1
 5. handlers.rs
 
 
-## 3.3  
+## 3.3 健康检查
 
 * Step 1：修改 `webservice` 的 `toml`，添加 `teacher-service`，并添加 `default-run` 配置项
 
@@ -183,6 +183,7 @@ name = "server1"
 #[[bin]]
 #name = "teacher-service"
 ```
+
 * Step 2：在 `bin` 目录创建 `teacher-service.rs`，在 `src` 目录下创建 `models.rs、state.rs、routers.rs、handlers.rs`
 
 
@@ -203,3 +204,291 @@ $ cargo run -p webservice
 $ curl localhost:3000/health
 ```
 
+## 3.4 Post 资源
+
+* Step 1：修改 `webservice` 的 `toml`，添加依赖库 `serde` 和 `chrono`
+
+```rust
+# 这是 webservice 的 toml
+ 
+[package]
+name = "webservice"
+version = "0.1.0"
+edition = "2021"
+
+# 当运行 webservice 时，如果不指名二进制文件，那么首先运行 teacher-service
+default-run = "teacher-service"
+
+[dependencies]
+actix-web = "3"
+actix-rt = "1.1.1"
+serde = { version = "1.0.132", features = ["derive"]}  // 新增
+chrono = { version = "0.4.19", features = ["serde"]}   // 新增
+```
+
+其他代码
+
+* state.rs
+
+```rust
+use std::sync::Mutex;
+use super::models::Course;
+
+pub struct AppState {
+    // 响应字符串，这个字段共享于所有线程，初始化后它是一个不可变的
+    pub health_check_response: String,
+    /*
+        也可以给每个线程共享，但它是可变的
+        使用 Mutex 保证线程安全，即在修改数据前这个线程要先获取修改数据的控制权
+     */
+    pub visit_count: Mutex<u32>,
+    
+    pub courses: Mutex<Vec<Course>>,  // 新增字段
+}
+```
+
+* routers.rs
+
+```rust
+pub fn course_routes(cfg: &mut web::ServiceConfig) {
+    /*
+        service 方法使用 scope 先定义了作用域
+
+        /courses 就是这套的根路径
+     */
+    cfg
+    .service(web::scope("/courses")
+    .route("/", web::post()
+    .to(new_course)));
+}
+```
+
+* models.rs
+
+```rust
+use actix_web::web;
+use chrono::NaiveDateTime;
+use serde::{Deserialize, Serialize}; // 序列化，反序列化
+
+// Clone 用于解决所有权相关问题
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct Course {
+    pub teacher_id: usize,
+    pub id: Option<usize>,
+    pub name: String,
+    pub time: Option<NaiveDateTime>, // 时间类型
+}
+ 
+// 实现 From 将 json 格式数据转为 Course
+/*
+    web::Json<T>、web::Data<T> 都属于叫数据提取器
+    这里作用就是可以把 json 格式数据转为 Course 等特定类型的数据
+
+*/
+impl From<web::Json<Course>> for Course {
+    fn from(course: web::Json<Course>) -> Self {
+        Course {
+            teacher_id: course.teacher_id,
+            id: course.id,
+            name: course.name.clone(),
+            time: course.time,
+        }
+    } 
+}
+```
+
+* handler.rs
+
+```rust
+use super::models::Course;
+use chrono::Utc;
+
+// 经测试，app_state 与 new_course 顺序可互换
+pub async fn new_course(
+    app_state: web::Data<AppState>,
+    new_course: web::Json<Course>, 
+) -> HttpResponse {
+    println!("Received new course");
+
+    let course_count = app_state
+        .courses
+        .lock()
+        .unwrap()
+        .clone()
+        .into_iter()  // 变成便利器
+        .filter(|course| course.teacher_id == new_course.teacher_id)
+        .collect::<Vec<Course>>() // 变成 Vector
+        .len();
+
+    let new_course = Course {
+        teacher_id: new_course.teacher_id, // 传进来的 id
+        id: Some(course_count + 1),
+        name: new_course.name.clone(),
+        time: Some(Utc::now().naive_utc()), // 取当前时间
+    };
+    // 加入新课程到集合中
+    app_state.courses.lock().unwrap().push(new_course);
+    HttpResponse::Ok().json("Course added!")
+
+
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use actix_web::http::StatusCode;
+    use std::sync::Mutex;
+
+    // 通常测试写个 test 就行了，但这里是 async 的所以需要用 actix_rt 异步运行时
+    #[actix_rt::test]
+    async fn post_course_test() {
+        let course = web::Json(
+            Course {
+                teacher_id: 1,
+                name: "Test Course".into(), // 用 to_string() 也行
+                id: None,
+                time: None,
+            }
+        );
+        let app_state: web::Data<AppState> = web::Data::new(
+            AppState {
+                health_check_response: "".to_string(),
+                visit_count: Mutex::new(0),
+                courses: Mutex::new(vec![]),
+            }
+        );
+        let resp = new_course(app_state, course).await;
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+}
+
+测试
+$ cargo test -p webservice
+```
+
+* teacher-service.rs
+
+```rust
+#[actix_rt::main]
+async fn main() -> io::Result<()> {
+    let shared_data = web::Data::new(
+        // 初始化 AppState
+        AppState {
+            health_check_response: "I'm OK.".to_string(),
+            visit_count: Mutex::new(0),
+            courses: Mutex::new(vec![]),
+        }
+    );
+
+    // 这个闭包就是创建应用
+    /*
+        app_data(shared_data.clone()) 就是 把 shared_data 注册到 web 应用，
+        这时就可以向 handler 中注入数据了
+
+        configure(general_routes) 即配置它的路由
+     */
+    let app = move || {
+        App::new()
+        .app_data(shared_data.clone())
+        .configure(general_routes)  // 
+        .configure(course_routes)   // 新增，添加路由注册，general_routes 就是  routers 里的方法
+    };
+
+    HttpServer::new(app).bind("localhost:3000")?.run().await
+}
+```
+
+
+* 测试
+
+```shell
+$ curl -X POST localhost:3000/courses/ -H "Content-Type: application/json" -d '{"teacher_id":1,"name":"First course"}'
+
+# 返回 "Course added!"% 就可以了
+```
+
+
+## 3.5 Get 资源
+
+* routers.rs
+
+```rust
+pub fn course_routes(cfg: &mut web::ServiceConfig) {
+    /*
+        service 方法使用 scope 先定义了作用域
+
+        /courses 就是这套的根路径
+     */
+    cfg
+    .service(web::scope("/courses")
+    // POST localhost:3000/courses/
+    .route("/", web::post().to(new_course))
+    // GET localhost:3000/courses/{user_id}
+    .route("/{user_id}", web::get().to(get_courses_for_teacher))); // 新增 GET 查询
+}
+```
+
+* handlers.rs
+
+```rust
+// GET localhost:3000/courses/{user_id}
+pub async fn get_courses_for_teacher(
+    app_state: web::Data<AppState>,
+    params: web::Path<(usize)>,
+) -> HttpResponse {
+    // Path 里是一个元组，元组就一个元素，类型是 usize
+    let teacher_id: usize = params.0;
+
+    let filtered_courses = app_state
+        .courses
+        .lock()
+        .unwrap()
+        .clone()
+        .into_iter()
+        .filter(|course| course.teacher_id == teacher_id) 
+        .collect::<Vec<Course>>();
+
+    if filtered_courses.len() > 0 {
+        HttpResponse::Ok().json(filtered_courses)
+    } else {
+        HttpResponse::Ok().json("No courses found for teacher".to_string())
+    }
+}
+
+
+// tests
+
+    #[actix_rt::test]
+    async fn get_all_course_success() {
+        let app_state: web::Data<AppState> = web::Data::new(
+            AppState {
+                health_check_response: "".to_string(),
+                visit_count: Mutex::new(0),
+                courses: Mutex::new(vec![]),
+            }
+        );
+        // Path::from 创建 id 为 1 的课程
+        let teacher_id: web::Path<(usize)> = web::Path::from(1);
+        let resp = get_courses_for_teacher(app_state, teacher_id).await;
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+```
+
+* 测试
+
+```shell
+# 先造几个数据
+$ curl -X POST localhost:3000/courses/ -H "Content-Type: application/json" -d '{"teacher_id":1,"name":"First course"}'
+$ curl -X POST localhost:3000/courses/ -H "Content-Type: application/json" -d '{"teacher_id":1,"name":"Second course"}'
+$ curl -X POST localhost:3000/courses/ -H "Content-Type: application/json" -d '{"teacher_id":1,"name":"Third course"}'
+
+
+# 访问数据
+git:(master) ✗ curl localhost:3000/courses/1
+
+# 返回下边 说明 OK
+[{"teacher_id":1,"id":1,"name":"First course","time":"2023-10-17T07:43:29.087966"},{"teacher_id":1,"id":2,"name":"Second course","time":"2023-10-17T07:43:37.161619"},{"teacher_id":1,"id":3,"name":"Third course","time":"2023-10-17T07:43:43.974839"}]%
+```
+
+
+# 4 连接数据库
