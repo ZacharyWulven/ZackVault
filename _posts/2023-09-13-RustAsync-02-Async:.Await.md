@@ -2,8 +2,8 @@
 layout: post
 title: RustAsync-02-Async/.Await
 date: 2023-09-13 16:45:30.000000000 +09:00
-categories: [Rust]
-tags: [Rust]
+categories: [Rust, Rust Async]
+tags: [Rust, Rust Async]
 ---
 
 

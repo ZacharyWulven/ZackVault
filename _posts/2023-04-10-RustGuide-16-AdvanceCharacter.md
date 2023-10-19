@@ -2,8 +2,8 @@
 layout: post
 title: RustGuide-16-AdvanceCharacter
 date: 2023-04-10 16:45:30.000000000 +09:00
-categories: [Rust]
-tags: [Rust]
+categories: [Rust, Rust Getting Start]
+tags: [Rust, Rust Getting Start]
 ---
 
 # 19 高级特性

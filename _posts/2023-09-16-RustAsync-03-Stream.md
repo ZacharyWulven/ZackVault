@@ -2,8 +2,8 @@
 layout: post
 title: RustAsync-03-Stream
 date: 2023-09-16 16:45:30.000000000 +09:00
-categories: [Rust]
-tags: [Rust]
+categories: [Rust, Rust Async]
+tags: [Rust, Rust Async]
 ---
 
 

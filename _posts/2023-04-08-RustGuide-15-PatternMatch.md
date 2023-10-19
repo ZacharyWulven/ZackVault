@@ -2,8 +2,8 @@
 layout: post
 title: RustGuide-15-PatternMatch
 date: 2023-04-08 16:45:30.000000000 +09:00
-categories: [Rust]
-tags: [Rust]
+categories: [Rust, Rust Getting Start]
+tags: [Rust, Rust Getting Start]
 ---
 
 # 18 模式匹配

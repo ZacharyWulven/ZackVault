@@ -2,8 +2,8 @@
 layout: post
 title: RustGuide-05-Collection
 date: 2023-03-17 16:45:30.000000000 +09:00
-categories: [Rust]
-tags: [Rust]
+categories: [Rust, Rust Getting Start]
+tags: [Rust, Rust Getting Start]
 ---
 
 # 8 常用的集合

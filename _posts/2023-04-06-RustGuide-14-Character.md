@@ -2,8 +2,8 @@
 layout: post
 title: RustGuide-14-Character
 date: 2023-04-06 16:45:30.000000000 +09:00
-categories: [Rust]
-tags: [Rust]
+categories: [Rust, Rust Getting Start]
+tags: [Rust, Rust Getting Start]
 ---
 
 # 17 Rust 的面向对象编程特性

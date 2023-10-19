@@ -2,8 +2,8 @@
 layout: post
 title: RustGuide-09-MiniGrep
 date: 2023-03-24 16:45:30.000000000 +09:00
-categories: [Rust]
-tags: [Rust]
+categories: [Rust, Rust Getting Start]
+tags: [Rust, Rust Getting Start]
 ---
 
 # 12 项目实战

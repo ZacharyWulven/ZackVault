@@ -2,8 +2,8 @@
 layout: post
 title: Rust Web 全栈开发教程-Actix 和 REST API
 date: 2023-09-26 16:45:30.000000000 +09:00
-categories: [Rust]
-tags: [Rust]
+categories: [Rust, Rust Web]
+tags: [Rust, Rust Web]
 ---
 
 
@@ -615,6 +615,8 @@ DATABASE_URL=postgres://postgres:123456@127.0.0.1:5432/testdb
 
 [DB Ranking](https://db-engines.com/en/ranking)
 
+
+[使用数据库仓库](https://github.com/ZacharyWulven/Rust_Web_Full_Stack_Guide/commit/8aa024d9e2b95e588c2a29660c0100661245ec79#diff-fc8bfafb0fad95bac0b95dbdbac05a3cfc88f93a1e434a48277483864caf3c91)
 
 * state.rs
 

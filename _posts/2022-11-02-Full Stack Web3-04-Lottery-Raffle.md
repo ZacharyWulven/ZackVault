@@ -2,8 +2,8 @@
 layout: post
 title: Full Stack Web3-04-Lottery-Raffle
 date: 2022-11-02 16:45:30.000000000 +09:00
-categories: [区块链，chainlink公开课]
-tags: [区块链]
+categories: [区块链, chainlink 公开课]
+tags: [区块链, chainlink 公开课]
 ---
 
 # Hardhat Smart Contract Lottery/Raffle ( Lesson 9)

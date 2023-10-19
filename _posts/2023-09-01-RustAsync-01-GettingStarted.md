@@ -2,8 +2,8 @@
 layout: post
 title: RustAsync-01-GettingStarted
 date: 2023-09-01 16:45:30.000000000 +09:00
-categories: [Rust]
-tags: [Rust]
+categories: [Rust, Rust Async]
+tags: [Rust, Rust Async]
 ---
 
 

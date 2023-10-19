@@ -2,8 +2,8 @@
 layout: post
 title: RustGuide-04-Crate
 date: 2023-03-15 16:45:30.000000000 +09:00
-categories: [Rust]
-tags: [Rust]
+categories: [Rust, Rust Getting Start]
+tags: [Rust, Rust Getting Start]
 ---
 
 # 7 Package（包）、Crate（单元包）、Module（模块）

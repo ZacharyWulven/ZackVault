@@ -2,8 +2,8 @@
 layout: post
 title: RustGuide-10-Closure
 date: 2023-03-26 16:45:30.000000000 +09:00
-categories: [Rust]
-tags: [Rust]
+categories: [Rust, Rust Getting Start]
+tags: [Rust, Rust Getting Start]
 ---
 
 # 13 闭包

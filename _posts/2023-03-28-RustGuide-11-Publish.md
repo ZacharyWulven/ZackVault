@@ -2,8 +2,8 @@
 layout: post
 title: RustGuide-11-Publish
 date: 2023-03-28 16:45:30.000000000 +09:00
-categories: [Rust]
-tags: [Rust]
+categories: [Rust, Rust Getting Start]
+tags: [Rust, Rust Getting Start]
 ---
 
 # 14 cargo 和 crates.io

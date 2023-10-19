@@ -2,8 +2,8 @@
 layout: post
 title: RustGuide-07-Trait
 date: 2023-03-20 16:45:30.000000000 +09:00
-categories: [Rust]
-tags: [Rust]
+categories: [Rust, Rust Getting Start]
+tags: [Rust, Rust Getting Start]
 ---
 
 # 10 泛型、Trait、生命周期
