@@ -1,6 +1,6 @@
 ---
 layout: post
-title: Rust Web 全栈开发教程-Actix 和 REST API
+title: Rust Web 全栈开发教程-02-Actix 和 REST API
 date: 2023-09-26 16:45:30.000000000 +09:00
 categories: [Rust, Rust Web]
 tags: [Rust, Rust Web]
