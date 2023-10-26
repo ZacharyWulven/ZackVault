@@ -10,7 +10,6 @@ tags: [Rust, Rust Web]
 
 ## 8.1 目标
 
-
 ![image](/assets/images/rust/web_server/teacher_aim.png)
 
 
@@ -86,3 +85,93 @@ tera = "1.15.0"
 ```
 HOST_PORT=127.0.0.1:8080
 ```
+
+[webapp 代码](https://github.com/ZacharyWulven/Rust_Web_Full_Stack_Guide/commit/46906e5b6a5f395b9375f6c3210d19fc361bdab1)
+
+
+# 10 使用 WebAssembly 编写客户端应用
+
+## 10.1 项目结构和功能
+
+![image](/assets/images/rust/web_server/assembly.png)
+
+## 10.2 什么是 `WebAssembly`
+* `WebAssembly` 是一种新的编码方式，可以运行在现代的浏览器中
+1. 它是一种低级的类汇编语言
+2. 具有紧凑的二进制格式
+3. 可以接近原生的性能运行
+4. 并为 `C/C++、C#、Rust` 等语言提供一个编译目标，以便它们可以在 Web 上运行
+5. 它也被设计为可以与 `JavaScript` 共存的，允许两者一起工作
+
+### 机器码
+* 机器码就是计算机可直接执行的语言
+* 汇编语言比较接近机器码
+
+![image](/assets/images/rust/web_server/assembly_01.png)
+
+
+### 机器码与 CPU 架构
+* 不同的 CPU 架构需要不同的机器码和汇编
+* 高级语言可以”翻译“成机器码，以便在 CPU 上运行
+
+![image](/assets/images/rust/web_server/assembly_02.png)
+
+
+### WebAssembly
+* WebAssembly 其实不是汇编语言，它不针对特定的机器而是针对浏览器的
+* WebAssembly 是中间编译器目标（有点类似 苹果 bitcode 的 IR 中间产物）
+
+![image](/assets/images/rust/web_server/assembly_03.png)
+
+
+* WebAssembly 有两种格式的文件
+1. 文本格式：`.wat`，对应图中的 `TEXTUAL FORMAT`
+2. 二进制格式：`.wasm`，对应图中的 `BINARY FORMAT`
+
+![image](/assets/images/rust/web_server/assembly_04.png)
+
+
+### WebAssembly 能做什么呢？
+* 可以把你编写的 `C/C++、C#、Rust` 等语言代码编译成 WebAssembly 模块，这样就可以在 `Web` 应用中加载该模块，并通过 `JavaScript` 调用这些模块
+* 它并不是为了替代 `JS`，而是与 JS 一起工作
+* 在使用 `WebAssembly` 时，依然要使用 `HTML 和 JS`，因为 `WebAssembly` 无法访问平台 `API`，例如 `DOM，WebGL`
+
+
+### WebAssembly 如何工作？
+* 这个一个 C++ 的例子
+* 将源代码 `hello.c` 编译为 `hello.wasm`, `hello.wasm` 就可以在浏览器中配合 `HTML 和 JS` 运行了
+
+![image](/assets/images/rust/web_server/assembly_05.png)
+
+
+### WebAssembly 优点
+
+
+![image](/assets/images/rust/web_server/assembly_06.png)
+
+
+## 10.3 搭建环境
+
+[WebAssembly Build Doc](https://rustwasm.github.io/docs/book/)
+
+可直接看第四章教程先安装
+
+```shell
+# 安装 wasm-pack
+$ curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh\n
+
+
+# 安装 cargo-generate
+$ cargo install cargo-generate
+
+# (可选) 如果 cargo-generate 安装失败可以升级下 rustc
+$ rustup update
+
+
+# 安装 npm（如果没装的话，就是装 node.js）
+$ npm --version # 检查 npm 是否安装
+```
+
+
+
+
