@@ -146,8 +146,7 @@ fn main() {
 
 ### 2.3.2.2 建议实现 `Send Trait` 和 `Sync Trait`、最小程度 `unpin`
 
-* 如果你的类型不是 `Send` 的类型那么就无法放到 `Mutex`（互斥锁）中，也不能在包含线程池的应用程序中传递使用
-* `Send` 例子
+* 如果你的类型不是 `Send` 的类型那么就无法放到 `Mutex`（互斥锁）中，也不能在包含线程池的应用程序中传递使用，请看下边例子
 
 ```rust
 use std::rc::Rc;
@@ -181,10 +180,157 @@ fn main() {
 }
 ```
 
+* 如果你的类型不是 `Sync` 的类型那么就无法通过 `Arc` 进行共享，也不能被放置在静态变量中，请看下边例子
+
+
+```rust
+use std::cell::RefCell;
+use std::env::consts::ARCH;
+use std::sync::Arc;
+
+fn main() {
+    let x = Arc::new(RefCell::new(42));
+    std::thread::spawn(move || {
+        let mut x = x.borrow_mut();
+        // 因为 RefCell 没有实现 Sync 所以下边报错
+        *x += 1; // error `RefCell<i32>` cannot be shared between threads safely
+    });
+}
+```
+
+> 如果你的类型没有实现上述 `trait`，建议在文档中说明
+{: .prompt-info }
+
+
+### 2.3.2.3 建议实现 `Clone Trait` 和 `Default Trait`
+
+* 实现 `Clone Trait` 的例子
+
+```rust
+#[derive(Debug, Clone)]
+struct Person {
+    name: String,
+    age: u32,
+}
+
+impl Person {
+    fn new(name: String, age: u32) -> Person {
+        Person { name, age }
+    }
+}
+
+fn main() {
+    let p1 = Person::new("Alice".to_owned(), 22);
+    let p2 = p1.clone();
+
+    println!("p1: {:?}", p1);
+    println!("p2: {:?}", p2);
+}
+```
+
+
+* 实现 `Default Trait` 的例子，`Default` 即能够提供一个默认的初始值
+
+
+```rust
+#[derive(Default)]
+struct Point {
+    x: i32,
+    y: i32,
+}
+
+fn main() {
+    let point = Point::default();
+    println!("Point: ({}, {})", point.x, point.y);
+}
+```
+
+
+
+
+> 如果你的类型没有实现上述 `trait`，建议在文档中说明
+{: .prompt-info }
+
+
+### 2.3.2.4 建议实现 `PartialEq、PartialOrd、Hash、Eq、Ord`
+
+* `PartialEq` 特别有用
+1. 因为用户会希望使用 `==` 或 `assert_eq!` 比较你的类型的两个实例
+
+```rust
+// 实现 PartialEq
+#[derive(Debug, PartialEq)]
+struct Point {
+    x: i32,
+    y: i32,
+}
+
+fn main() {
+    let p1 = Point { x: 1, y: 2};
+    let p2 = Point { x: 1, y: 2};
+    let p3 = Point { x: 3, y: 4};
+
+    // 使用 == 比较它们是否相等
+    println!("Point1 == Point2: {}", p1 == p2);
+    println!("Point1 == Point3: {}", p1 == p3);
+}
+```
+
+#### `PartialOrd、Hash` 相对更专门化一些
+
+* 如果需要将类型作为 `Map` 中的 `Key` 使用的时候，就必须要求其类型实现 `PartialOrd`，以便 `Key` 可以进行比较
+
+```rust
+// PartialOrd 例子
+use std::collections::BTreeMap;
+
+// 实现了这些 trait
+// Ord 需要实现 PartialOrd
+#[derive(Debug, PartialEq, Eq, Clone)]
+struct Person {
+    name: String,
+    age: u32,
+}
+
+fn main() {
+    let mut ages = BTreeMap::new();
+
+    let person1 = Person {
+        name: "Alice".to_owned(),
+        age: 25,
+    };
+
+    let person2 = Person {
+        name: "Bob".to_owned(),
+        age: 23,
+    };
+
+    let person3 = Person {
+        name: "Cook".to_owned(),
+        age: 31,
+    };
+
+    // 去掉实现 PartialOrd，这里报错
+    ages.insert(person1.clone(), "Alice's age");
+    ages.insert(person2.clone(), "Bob's age");
+    ages.insert(person3.clone(), "Cook's age");
+ 
+    for (person, desc) in &ages {
+        println!("{}: {} - {:?}", person.name, person.age, desc);
+    }
+}
+```
+
+* 使用 `std::collection` 的集合类型进行去重的类型，就必须要求其类型实现 `Hash`，以便进行哈希计算
+
+```rust
+
+```
+
 
 
 #### 小结
 
-> 建议实现： `Trait` 有 `Debug、Send、Sync`，以及最小程度实现 `unpin`
+> 建议实现： `Trait` 有 `Debug、Send、Sync、Default、Clone、PartialEq、PartialOrd、Hash、Eq、Ord`，以及最小程度实现 `unpin`。如果你的类型没有实现上述 `Trait`，建议在文档中说明。
 {: .prompt-info }
 
