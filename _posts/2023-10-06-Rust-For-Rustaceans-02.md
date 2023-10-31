@@ -269,7 +269,31 @@ fn main() {
 * 在定义 trait 时，它是否是对象安全的，这也是契约未写明的一部分
 
 ### 什么是对象安全？
+* 对象安全：描述一个 `trait` 是否可以安全的包装成为一个 `trait 对象`
 
+### 对象安全的 `trait` 是满足以下条件的 `trait`(RFC 255)
+* 所有的 `supertrait`(父级 traiit) 必须是安全的
+* `Sized trait` 不能作为 `supertrait`（不能要求 `Self:Sized`）
+* 不能有任何关联的常量
+* 不能有任何带有泛型的关联类型
+* 所有的关联函数必须满足以下条件之一：
+  * 1. 可以从 `trait 对象`分发的函数（Dispatchable functions）：
+    * 要求没有任何类型参数（但生命周期参数是允许的）
+    * 并且必须是一个方法，只在接收器类型（接收类型）中使用 `Self`
+    * 接收器是以下类型之一：
+      * `&Self 即 &self`
+      * `&mut Self 即 &mut self`
+      * `Box<Self>`
+      * `Rc<Self>`
+      * `Arc<Self>`
+      * `Pin<P>`，其中 `P` 是以上类型之一
+    * 没有 `where Self: Sized` 约束（Self 的接收器类型，即 self 暗含了这一点）
+  * 2. 显示不可分发的函数（non-dispatchable functions）要求：
+    * 具有 `where Self: Sized` 约束（Self 的接收器类型，即 self 暗含了这一点）
+
+
+
+### 如果这个 `trait` 是对象安全的，那么：
 
 
 
