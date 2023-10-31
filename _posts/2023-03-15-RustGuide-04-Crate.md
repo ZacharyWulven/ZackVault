@@ -459,3 +459,32 @@ src-lib.rs
 
 > 一个目录或一个文件就是一级，目录的层级结构要跟模块的层级结构相匹配。
 {: .prompt-info }
+
+
+# 更换 crates 源
+* 如果网络不好可以换成国内源操作如下
+
+* Step1：进入目录，创建 `config` 文件
+
+```shell
+$ cd /Users/xxxx/.cargo
+$ touch config
+```
+
+* Step2：编辑 `config` 文件
+
+```
+[source.crates-io]
+registry = "https://github.com/rust-lang/crates.io-index"
+
+replace-with = 'tuna'
+[source.tuna]
+registry = "https://mirrors.tuna.tsinghua.edu.cn/git/crates.io-index.git"
+
+
+[net]
+git-fetch-with-cli = true
+```
+
+* Step3：然后再重新 `cargo build` 即可
+
