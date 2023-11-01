@@ -277,7 +277,7 @@ fn main() {
 * 不能有任何关联的常量
 * 不能有任何带有泛型的关联类型
 * 所有的关联函数必须满足以下条件之一：
-  * 1. 可以从 `trait 对象`分发的函数（Dispatchable functions）：
+  * 1 可以从 `trait 对象`分发的函数（Dispatchable functions）：
     * 要求没有任何类型参数（但生命周期参数是允许的）
     * 并且必须是一个方法，只在接收器类型（接收类型）中使用 `Self`
     * 接收器是以下类型之一：
@@ -288,12 +288,534 @@ fn main() {
       * `Arc<Self>`
       * `Pin<P>`，其中 `P` 是以上类型之一
     * 没有 `where Self: Sized` 约束（Self 的接收器类型，即 self 暗含了这一点）
-  * 2. 显示不可分发的函数（non-dispatchable functions）要求：
+  * 2 显示不可分发的函数（non-dispatchable functions）要求：
     * 具有 `where Self: Sized` 约束（Self 的接收器类型，即 self 暗含了这一点）
 
 
 
-### 如果这个 `trait` 是对象安全的，那么：
+* 如果这个 `trait` 是对象安全的，那么：
+  - 就可以使用 `dyn trait` 将实现该 `trait` 的不同类型视为单一通用类型
+
+* 如果 `trait` `不是`对象安全的，那么：
+  - 编译器会禁止使用 `dyn trait`
+
+
+### 在设计接口时，建议 `trait` 是对象安全的（即使是稍微降低使用的便利程度），因为它提供了新的使用方式和灵活性，
+
+* 看个对象安全的例子：
+
+```rust
+/*
+    假设我们有一个 Animal 特征，它有两个方法：name 和 speak
+    name 方法返回一个 &str，表示动物名称
+    speak 方法打印动物发出的声音
+    我们可以为 Dog 和 Cat 类型实现这些特征
+
+*/
+
+
+trait Animal {
+    fn name(&self) -> &str;
+    fn speak(&self);
+}
+
+struct Dog {
+    name: String
+}
+
+impl Animal for Dog {
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn speak(&self) {
+        println!("woof!");
+    }
+}
+
+struct Cat {
+    name: String
+}
+
+impl Animal for Cat {
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn speak(&self) {
+        println!("Meow!");
+    }
+}
+
+/*
+    这个 Animal 特征是 object-safe 的，因为它没有返回 Self 类型或使用泛型参数
+    所以我们可以用它来创建一个 trait 对象
+
+    这样我们就可以用一个统一的类型 Vec<&dyn Animal> 来存储不同类型的动物
+    并且通过 trait 对象来调用它们的方法
+*/
+
+fn main() {
+    let dog = Dog { name: "Fido".to_string() };
+
+    let cat = Dog { name: "Whiskers".to_string() };
+
+    // 
+
+    let animals: Vec<&dyn Animal> = vec![&dog, &cat];
+
+    
+    for animal in animals {
+        println!("This is {}", animal.name());
+        animal.speak();
+    }
+}
+```
+
+
+* 非对象安全的例子：
+
+```rust
+/*
+    如果 Animal 有返回 Self 类型，那它就不是对象安全的了
+    那这个 Animal trait 就不是对象安全的，因为 clone 方法违反了规则（返回类型不能是 Self）
+    现在就不能用它来创建 trait object 了，因为编译器无法知道 Self 具体指代哪个类型
+*/
+trait Animal {
+    fn name(&self) -> &str;
+    fn speak(&self);
+    fn clone(&self) -> Self; 
+}
+
+struct Dog {
+    name: String,
+}
+
+impl Animal for Dog {
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn speak(&self) {
+        println!("wang wang!");
+    }
+
+    fn clone(&self) -> Self where Self: Sized, {
+        todo!()
+    }
+}
+
+struct Cat {
+    name: String,
+}
+
+impl Animal for Cat {
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn speak(&self) {
+        println!("miao miao!");
+    }
+
+    fn clone(&self) -> Self where Self: Sized, {
+        todo!()
+    }
+}
+
+fn main() {
+    let dog = Dog { name: "Fido".to_string() };
+
+    let cat = Dog { name: "Whiskers".to_string() };
+
+    // 下边代码就报错了，因为 Animal 不是对象安全的
+    let animals: Vec<&dyn Animal> = vec![&dog, &cat]; // error
+
+    for animal in animals {    // error
+        println!("This is {}", animal.name());
+    }
+}
+```
+
+* 那么我们还想保留上边 `Animal 中 clone 方法`，并保持对象安全应该怎么做呢 ？
+
+> 解决方案：`给 Self 添加 Sized 约束`，即 `where Self: Sized`，这时 `clone` 这个方法就只能在具体类型上调用，而不是在 `trait 对象（通用类型）`上调用
+{: .prompt-info }
+
+
+```rust
+
+trait Animal {
+    fn name(&self) -> &str;
+    fn speak(&self);
+    fn clone(&self) -> Self where Self: Sized; // 添加 Sized 约束
+}
+
+struct Dog {
+    name: String,
+}
+
+impl Animal for Dog {
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn speak(&self) {
+        println!("wang wang!");
+    }
+
+    fn clone(&self) -> Self where Self: Sized, {
+        todo!()
+    }
+}
+
+
+#[derive(Debug)]
+struct Cat {
+    name: String,
+}
+
+impl Animal for Cat {
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn speak(&self) {
+        println!("miao miao!");
+    }
+
+    fn clone(&self) -> Self where Self: Sized, {
+        Cat {
+            name: self.name.clone(),
+        }
+    }
+}
+
+fn main() {
+    let dog = Dog { name: "Fido".to_string() };
+
+    let cat = Cat { name: "Whiskers".to_string() };
+
+    /*
+        这样我们就可以继续用 Animal 来创建 trait object 了
+     */
+    let animals: Vec<&dyn Animal> = vec![&dog, &cat];
+
+    for animal in animals {
+        println!("This is {}", animal.name());
+        animal.speak();
+        /*
+            Note：但是我们不能用 trait object 来调用 clone 方法
+            因为只能在具体的类型上调用 clone 方法
+         */
+        //animal.clone();  // error
+    }
+
+    // 因为只能在具体的类型上调用 clone 方法
+    let cat2: Cat = cat.clone();
+    println!("Cloned cat is {:?}", cat2);
+}
+```
+
+### 如果 `trait` 必须有泛型方法时：
+* 1 那么建议把泛型参数凡在 `trait` 上，来看下例子
+
+```rust
+use std::collections::HashSet;
+use std::hash::Hash;
+
+// 将泛型参数放在 Trait 上
+trait Container<T> {
+    fn contains(&self, item: &T) -> bool;
+}
+
+// 我们可以为不同容器类型实现 Container Trait，每个实现都具有自己特定的元素类型
+// 例，可以为 Vec<T> 和 HashSet<T> 实现 Container Trait
+impl<T> Container<T> for Vec<T> 
+    where T: PartialEq, 
+{
+        fn contains(&self, item: &T) -> bool {
+            self.iter().any(|x| x == item)
+        }
+}
+
+impl<T> Container<T> for HashSet<T> 
+where T: Hash + Eq, 
+{   
+    fn contains(&self, item: &T) -> bool {
+        self.contains(item)
+    }
+}
+
+fn main() {
+    let vec_container: Box<dyn Container<i32>> = Box::new(vec![1, 2, 3]);
+
+    let set_container: Box<dyn Container<i32>> = Box::new(
+        vec![4, 5, 6].into_iter().collect::<HashSet<_>>()
+    );
+
+    // 调用 contains 方法
+
+    println!("Vec contains 2: {}", vec_container.contains(&2));
+    println!("HashSet contains 6: {}", set_container.contains(&6));
+}
+
+```
+
+* 2 泛型参数是否可以使用动态分发，来保证 `trait` 的对象安全，`即使用动态分发来代替泛型`，看个例子
+
+
+```rust
+use std::fmt::Debug;
+
+/*
+    有一个 trait Foo，它有一个泛型方法 bar，接收一个泛型参数 T：
+    trait Foo {
+        fn bar<T>(&self, x: T);
+    }
+    这个 Foo 是对象安全的么？答案是：取决于 T 的类型
+    1 如果 T是一个具体类型，比如 i32 或 String，那么它就 `不是` object-safe 的，
+    因为它需要再运行时知道 T 的具体类型才能调用 bar 方法
+
+    2 如果 T 是一个 trait object，比如 &dyn Debug 或 &dyn Display，
+    那么这个 trait 就是 object-safe 的，因为它可以用动态分发的方式来调用 T 的方法，
+    所以定义如下：
+*/
+
+trait Foo {
+    fn bar(&self, x: &dyn Debug);
+}
+
+// 定义 A 让它实现 Foo
+struct A {
+    name: String,
+}
+
+impl Foo for A {
+    fn bar(&self, x: &dyn Debug) {
+        println!("A {} says {:?}", self.name, x);
+    }
+}
+
+// 定义 B 让它实现 Foo
+struct B {
+    id: i32,
+}
+
+impl Foo for B {
+    fn bar(&self, x: &dyn Debug) {
+        println!("B {} says {:?}", self.id, x);
+    }
+}
+
+fn  main() {
+    // 这时就可以用 Foo 来创建 trait 对象了
+
+    let a = A { name: "Bob".to_string() };
+
+    let b = B { id: 42 };
+
+    // 创建一个 Vec，它存储了 Foo 的 trait object
+    let foos: Vec<&dyn Foo> = vec![&a, &b];
+
+    // 遍历 Vec，并用 trait object 调用 bar 方法
+    for foo in foos {
+        // & 让 &str => &dyn Debug
+        foo.bar(&"Hello"); // "Hello" 实现了 Debug 特征
+    }
+    
+}
+```
+
+
+### 为了实现对象安全，需要做出多大的牺牲呢？
+* 首先考虑你的 `trait` 会被如何使用，用户是否想把你的 `trait` 当做 `trait 对象`
+  - 如果用户想使用你的 `trait 的多种不同实例`，那么你应该努力实现对象安全
+
+
+
+## 3.5 借用 VS 拥有（Borrowed VS Owned）
+
+### 针对 Rust 中几乎所有每个函数、Trait 和类型，都需要决定两件事：
+1. 是否应该拥有数据
+2. 或者仅持有对数据的引用
+
+### 如果代码需要数据的所有权
+1. 那么就必须存储拥有的数据
+2. 当你的代码必须拥有数据时，还必须让调用者提供拥有的数据，而不是提供引用或克隆
+3. 这样就可以让调用者控制分配，并且可清楚的看到使用相关接口的成本
+ 
+### 如果代码不需要拥有数据
+* 应该操作与引用
+* But，也有例外：
+  - 即像 `i32/bool/f64` 这种小类型
+    * 它们直接存储和复制的成本与通过引用存储的成本基本相同
+    * 并不是所有 `Copy 类型` 都适用
+      - 例如：`[u8; 8192]` 是 `Copy 类型`，但在多个地方存储和复制它会很昂贵
+      
+      
+### 有时无法确定代码是否需要拥有数据，因为它取决于运行时的情况
+* 这时就需要 `Cow 类型`
+  * 允许在需要时持有引用或拥有这个值
+* 如果只有引用的情况下要求生成拥有的值
+  * `Cow 类型` 将使用 `ToOwned trait` 在后台创建一个，通常是通过 `Clone` 方式
+  
+
+> 通常在返回类型中使用 `Cow` 来表示有时会分配内存的函数，请看下列
+{: .prompt-info }
+
+
+```rust
+use std::borrow::Cow;
+/*
+    有一个函数 process_data，它接收字符串参数
+    有时我们需要修改输入的字符串，并拥有对修改后的字符串的所有权
+    然而，大多数情况下，我们值对输入字符串进行读取操作，而不需要修改它
+*/
+fn process_data(data: Cow<str>) {
+    if data.contains("invalid") {
+        // 如果输入字符串包含 "invalid"，我们需要修改它
+        // into_owned 获取其所有权，返回持有的数据
+        let owned_data: String = data.into_owned();
+        // 进行一些修改操作
+        println!("Processed data: {}", owned_data);
+    } else {
+        // 如果输入字符串不包含 "invalid"，我们只需要读取它
+        println!("Data: {}", data);
+    }
+}
+
+/*
+    本例中，我们使用 Cow<str> 类型作为参数类型
+    当调用时，我们可以传递一个普通的字符串引用（&str）
+    或一个拥有所有权的字符串（String）作为参数
+*/
+
+fn main() {
+    let input1 = "This is valid data.";
+    process_data(Cow::Borrowed(input1));       // 传入引用
+
+    let input2 = "This is invalid data.";
+    process_data(Cow::Owned(input2.to_owned())); // 传入持有的数据
+}
+```
+
+
+### 有时候，引用生命周期会让接口很复杂，难以使用
+* 如果用户使用接口时遇到编译问题，这`表明您可能需要（即使不必要）拥有某些数据的所有权`
+  * 这样做的话（拥有某些数据的所有权），建议首先考虑容易克隆或不涉及性能敏感性的数据（先拥有它们的所有权），而不是直接对大块数据的内容进行堆分配
+  * 这样做可以避免性能问题并提高接口的可用性
+
+ 
+## 3.6 可失败和可阻塞的析构函数（Fallible and Blocking Destructors）对接口灵活性的影响
+
+* 析构函数（Destructor）：即在值被销毁时执行特定的清理操作
+* 析构函数通常由 `Drop trait` 实现，它定义了一个 `drop` 方法，这个方法中可以进行清理操作
+* 析构函数通常是不允许失败的，并且是非阻塞的执行的，但有时：
+  * 例如释放资源时，可能需要关闭网络连接或写入日志文件，这些操作都有可能发生错误
+  * 在 `drop` 方法中可能需要执行阻塞操作，例如等待一个线程的结束或等待一个异步任务的完成
+    * 例如针对 I/O 操作的类型，在 `drop` 时是需要执行清理的
+      * 例如：将写入的数据刷新到磁盘、关闭打开的文件、断开网络连接
+      * 这些清理操作就应该在类型的 `Drop 实现` 中完成
+        * issue：一旦值被丢弃，就无法向用户传递错误信息了，除非通过 `panic`
+        * 而异步代码也有类似的 issue：你可能希望在清理过程中完成这些工作，但有其他工作处于 `pending` 状态
+          * 针对异步的情况可以尝试启动另外一个执行器，但这会引入其他问题，例如在异步代码中阻塞
+
+* 针对上述问题没有完美的解决方案：`只能是通过 Drop 进行尽力的清理`
+  * 如果清理出错了，至少我们尝试了，就忽略错误并继续吧
+  * 如果还有可用的执行器，可尝试生成一个 `future` 来做清理，但如果 `future` 永不会运行，我们也尽力了
+
+* 如果用户不想留下这种 `松散的线程`，那么我们可以提供显式的析构函数
+  * 手动实现一个
+  * 通常是一个方法，它获取 `self` 的所有权并暴露任何错误 `use Result<_, _>` 或异步性 `use async fn`，这些都是与销毁相关的，看个例子
+  
+  
+```rust
+use std::os::fd::AsRawFd;
+
+struct File {
+    name: String,
+    fd: i32,
+}
+
+impl File {
+    fn open(name: &str) -> Result<File, std::io::Error> {
+        // 使用 std::fs::OpenOptions 打开文件，具有读写权限
+        let file = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(name)?;
+
+        // 使用 std::os::unix::io::AsRawFd 获取文件描述符
+        let fd = file.as_raw_fd();
+        
+        // 返回一个 File 实例，包含 name 和 fd 字段
+        Ok(File { 
+            name: name.to_string(),
+             fd, 
+        })
+    }
+
+    // 一个显示的析构函数，关闭文件并返回错误
+    fn close(self) -> Result<(), std::io::Error> {
+        // use std::os::unix::io::FromRawFd 将 fd 转回 std::fs::File
+        let file: std::fs::File = unsafe {
+            std::os::unix::io::FromRawFd::from_raw_fd(
+                self.fd
+            )
+        };
+        // use std::fs::File::sync_all 将任何挂起的写入刷新到磁盘
+        file.sync_all()?;
+        // 使用 std::fs::File::set_len 将文件截断为 0 字节
+        file.set_len(0)?;
+        // 再次 use std::fs::File::sync_all 刷新截断
+        file.sync_all()?;
+
+        // 丢弃 file 实例，它会自动关闭
+        drop(file);
+
+        // 返回 Ok(())
+        Ok(())
+    }
+}
+
+fn main() {
+    // 创建一个名为 "test.txt" 的文件，包含一些内容
+    std::fs::write("test.txt", "Hello, world!").unwrap();
+
+    // 打开文件并获取一个 File 实例
+    let file = File::open("test.txt").unwrap();
+
+    println!("File name: {}, fd: {}", file.name, file.fd);
+
+    // 关闭文件并处理任何错误
+    // 收到调用析构函数 close
+    match file.close() {
+        Ok(_) => println!("File closed successfully"),
+        Err(e) => println!("Error closing file: {}", e),
+    }
+
+    // check 关闭后的文件大小
+    let metadata = std::fs::metadata("test.txt").unwrap();
+    println!("File size: {} bytes", metadata.len());
+}
+```
+  
+
+> Note：显式的析构函数需要再文档中突出显示  
+{: .prompt-info }
+
+### 添加显式的析构函数时也会遇到问题：
+* 当类型实现了 `Drop trait`，在析构函数中就无法将该类型的任何字段移出
+  * 因为在显式的析构函数调用后，`Drop::drop` 方法仍然会被调用，它接收 `&mut self (到 self 的可变引用)`，它要求 `self` 的所有的部分都没有被 `move`
+* `Drop trait` 接收的是 `&mut self`，而不是 `self`，因此 `Drop trait` 无法实现简单的调用显式的析构函数并忽略其结果`（因为 Drop 不拥有 self）`
+  * 看下代码例子
+  
+```rust
+
+
+
+```
 
 
 
