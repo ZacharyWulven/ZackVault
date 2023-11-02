@@ -518,7 +518,7 @@ fn main() {
 ```
 
 ### 如果 `trait` 必须有泛型方法时：
-* 1 那么建议把泛型参数凡在 `trait` 上，来看下例子
+* 1 那么建议把泛型参数放在 `trait` 上，来看下例子
 
 ```rust
 use std::collections::HashSet;
@@ -800,7 +800,7 @@ fn main() {
     println!("File size: {} bytes", metadata.len());
 }
 ```
-  
+
 
 > Note：显式的析构函数需要再文档中突出显示  
 {: .prompt-info }
@@ -812,14 +812,454 @@ fn main() {
   * 看下代码例子
   
 ```rust
+use std::os::fd::AsRawFd;
 
+struct File {
+    name: String,
+    fd: i32,
+}
 
+impl File {
+    fn open(name: &str) -> Result<File, std::io::Error> {
+        // 使用 std::fs::OpenOptions 打开文件，具有读写权限
+        let file = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(name)?;
 
+        // 使用 std::os::unix::io::AsRawFd 获取文件描述符
+        let fd = file.as_raw_fd();
+        
+        // 返回一个 File 实例，包含 name 和 fd 字段
+        Ok(File { 
+            name: name.to_string(),
+             fd, 
+        })
+    }
+
+    fn close(self) -> Result<(), std::io::Error> {
+        // 移出 name 字段并打印
+        let name = self.name; // 不能从 `self.name` 中移出值，因为它位于 `&mut` 引用后面
+        println!("Closing file {}", name);
+
+        // use std::os::unix::io::FromRawFd 将 fd 转回 std::fs::File
+        let file: std::fs::File = unsafe {
+            std::os::unix::io::FromRawFd::from_raw_fd(
+                self.fd
+            )
+        };
+        // use std::fs::File::sync_all 将任何挂起的写入刷新到磁盘
+        file.sync_all()?;
+        // 使用 std::fs::File::set_len 将文件截断为 0 字节
+        file.set_len(0)?;
+        // 再次 use std::fs::File::sync_all 刷新截断
+        file.sync_all()?;
+
+        // 丢弃 file 实例，它会自动关闭
+        drop(file);
+
+        // 返回 Ok(())
+        Ok(())
+
+    }
+}
+
+// 为 File 实现 Drop trait，用于在值离开作用域时运行一些代码
+impl Drop for File {
+    // drop 方法，接受一个可变引用到 self 作为参数
+    fn drop(&mut self) {
+        /*
+            在 drop 中调用 close 方法并忽略它的结果
+
+            这里调用 close 报错，不能从 `*self` 中移出值，因为它位于 `&mut` 引用后面，
+            因为这里要获取其所有权
+            那这里怎么解决？没有完美的解决方案
+
+         */
+        let _ = self.close();        // error：
+        // 打印一条消息，表明文件被丢弃了
+        println!("Dropping file {}", self.name);
+    }
+}
+```
+
+#### 上边代码在 `drop 方法`中调用 `close` 报错，如何解决呢？
+* 答案是：没有完美的解决方案
+* 解决方案一：
+  * 将顶层类型作为包装了 `Option` 的新类型，`Option` 中持有一个内部类型，之前那些相关字段都放在该类型中
+  * 然后定义`两个析构函数`，在这两个析构函数中使用 `Option::take`，当内部类型还没有被取走时，调用内部类型的显示析构函数
+  * 而由于内部类型没有实现 `Drop trait`，所以你可以获取所有字段的所有权
+  * 缺点：即想在顶层类型上提供所有的方法，都必须包含通过 `Option` 来获取内部类型上的字段的代码，
+  * 下边是代码例子
+  
+```rust
+use std::os::fd::AsRawFd;
+
+// 一个表示文件句柄的类型
+struct File {
+    inner: Option<InnerFile>
+}
+
+// 一个内部类型，持有文件名和文件描述符，即原来的 File
+struct InnerFile {
+    name: String,
+    fd: i32,
+}
+
+impl File {
+    fn open(name: &str) -> Result<File, std::io::Error> {
+        // 使用 std::fs::OpenOptions 打开文件，具有读写权限
+        let file = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(name)?;
+
+        // 使用 std::os::unix::io::AsRawFd 获取文件描述符
+        let fd = file.as_raw_fd();
+        
+        // 返回一个 File 实例，包含 name 和 fd 字段
+        Ok(File { 
+            inner: Some(InnerFile {
+                name: name.to_string(),
+                fd,
+            })
+        })
+    }
+    // 一个显示的析构函数，关闭文件并返回任何错误
+    fn close(mut self) -> Result<(), std::io::Error> {
+        // use Option::take 取出 inner 字段的值，并检查是否是 Some(InnerFile)
+        if let Some(inner) = self.inner.take() {
+        // 移出 name 和 fd 字段并打印
+        // 因为 inner 没有实现 drop trait，所以这里可以获取其所有权
+        let name = inner.name; 
+        let fd = inner.fd;
+        println!("Closing file {} with fd {}", name, fd);
+        // use std::os::unix::io::FromRawFd 将 fd 转回 std::fs::File
+        let file: std::fs::File = unsafe {
+            std::os::unix::io::FromRawFd::from_raw_fd(
+                fd
+            )
+        };
+        // use std::fs::File::sync_all 将任何挂起的写入刷新到磁盘
+        file.sync_all()?;
+        // 使用 std::fs::File::set_len 将文件截断为 0 字节
+        file.set_len(0)?;
+        // 再次 use std::fs::File::sync_all 刷新截断
+        file.sync_all()?;
+
+        // 丢弃 file 实例，它会自动关闭
+        drop(file);
+
+        // 返回 Ok(())
+        Ok(())
+
+        } else {
+            // 如果 inner 字段是 None，说明文件已经被关闭或丢弃了，返回一个 error
+            Err(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "File already closed or dropped",
+            ))
+        }
+    }
+}
+
+// 为 File 实现 Drop trait，用于在值离开作用域时运行一些代码
+impl Drop for File {
+    // drop 方法，接受一个可变引用到 self 作为参数
+    fn drop(&mut self) {
+        if let Some(inner) = self.inner.take() {
+            let name = inner.name;
+            let fd = inner.fd;
+            println!("Closing file {} with fd {}", name, fd);
+            // use std::os::unix::io::FromRawFd 将 fd 转回 std::fs::File
+            let file: std::fs::File = unsafe {
+                std::os::unix::io::FromRawFd::from_raw_fd(
+                    fd
+                )
+            };
+            drop(file);
+        } else {
+            // 如果 inner 字段是 None，说明文件已经被关闭或丢弃了
+        }
+    }
+}
+
+// 用于测试 File 类型的主函数
+fn main() {
+    // 创建一个名为 "test.txt" 的文件，包含一些内容
+    std::fs::write("test.txt", "Hello, world!").unwrap();
+
+    // 打开文件并获取一个 File 实例
+    let file = File::open("test.txt").unwrap();
+
+    println!(
+        "File name: {}, fd: {}", 
+        file.inner.as_ref().unwrap().name, 
+        file.inner.as_ref().unwrap().fd
+    );
+
+    // 关闭文件并处理任何错误
+    // 收到调用析构函数 close
+    match file.close() {
+        Ok(_) => println!("File closed successfully"),
+        Err(e) => println!("Error closing file: {}", e),
+    }
+
+    // check 关闭后的文件大小
+    let metadata = std::fs::metadata("test.txt").unwrap();
+    println!("File size: {} bytes", metadata.len());
+}
 ```
 
 
+* 解决方案二：
+  * 所有字段都可以 `take`
+  * 如果类型具有合理的 `空值`，那么这个方案的效果更好
+  * 缺点：如果你必须将每个字段都包装在 `Option` 中，然后对这些字段的每次访问都进行匹配 `unwrap`，那么这样就很繁琐
+  * 下面是代码例子
+  
+```rust
+use std::os::fd::AsRawFd;
 
-<!--![image](/assets/images/rust/web_server/teacher_aim.png)-->
+struct File {
+    name: Option<String>,
+    fd: Option<i32>,
+}
+
+impl File {
+    fn open(name: &str) -> Result<File, std::io::Error> {
+        // 使用 std::fs::OpenOptions 打开文件，具有读写权限
+        let file = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(name)?;
+
+        // 使用 std::os::unix::io::AsRawFd 获取文件描述符
+        let fd = file.as_raw_fd();
+        
+        // 返回一个 File 实例，包含 name 和 fd 字段
+        Ok(File { 
+            name: Some(name.to_string()),
+            fd: Some(fd),
+        })
+    }
+
+    // 一个显示的析构函数，关闭文件并返回任何错误
+    fn close(mut self) -> Result<(), std::io::Error> {
+        // use std::mem::take 取出 name 字段的值，并检查是否是 Some(name)
+        if let Some(name) = std::mem::take(&mut self.name) {
+        // use std::mem::take 取出 fd 字段的值，并检查是否是 Some(fd)
+            if let Some(fd) = std::mem::take(&mut self.fd) {
+
+                println!("Closing file {} with fd {}", name, fd);
+                // use std::os::unix::io::FromRawFd 将 fd 转回 std::fs::File
+                let file: std::fs::File = unsafe {
+                    std::os::unix::io::FromRawFd::from_raw_fd(
+                        fd
+                    )
+                };
+                // use std::fs::File::sync_all 将任何挂起的写入刷新到磁盘
+                file.sync_all()?;
+                // 使用 std::fs::File::set_len 将文件截断为 0 字节
+                file.set_len(0)?;
+                // 再次 use std::fs::File::sync_all 刷新截断
+                file.sync_all()?;
+
+                // 丢弃 file 实例，它会自动关闭
+                drop(file);
+
+                // 返回 Ok(())
+                Ok(())
+            } else {
+                // 如果 inner 字段是 None，说明文件已经被关闭或丢弃了，返回一个 error
+                Err(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    "File already closed or dropped",
+                ))
+            }
+        } else {
+            // 如果 inner 字段是 None，说明文件已经被关闭或丢弃了，返回一个 error
+            Err(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "File already closed or dropped",
+            ))
+        }
+    }
+}
+
+// 为 File 实现 Drop trait，用于在值离开作用域时运行一些代码
+impl Drop for File {
+    // drop 方法，接受一个可变引用到 self 作为参数
+    fn drop(&mut self) {
+        if let Some(name) = std::mem::take(&mut self.name) {
+            if let Some(fd) = std::mem::take(&mut self.fd) {
+                // 打印
+                println!("Closing file {} with fd {}", name, fd);
+                // use std::os::unix::io::FromRawFd 将 fd 转回 std::fs::File
+                let file: std::fs::File = unsafe {
+                    std::os::unix::io::FromRawFd::from_raw_fd(
+                        fd
+                    )
+                };
+                drop(file);
+            }
+        } else {
+            // 如果 fd 字段是 None，说明文件已经被关闭或丢弃了
+        }
+    }
+}
+
+// 用于测试 File 类型的主函数
+fn main() {
+    // 创建一个名为 "test.txt" 的文件，包含一些内容
+    std::fs::write("test.txt", "Hello, world!").unwrap();
+
+    // 打开文件并获取一个 File 实例
+    let file = File::open("test.txt").unwrap();
+
+    println!(
+        "File name: {}, fd: {}", 
+        file.name.as_ref().unwrap(), 
+        file.fd.as_ref().unwrap()
+    );
+
+    // 关闭文件并处理任何错误
+    // 收到调用析构函数 close
+    match file.close() {
+        Ok(_) => println!("File closed successfully"),
+        Err(e) => println!("Error closing file: {}", e),
+    }
+
+    // check 关闭后的文件大小
+    let metadata = std::fs::metadata("test.txt").unwrap();
+    println!("File size: {} bytes", metadata.len());
+}
+```
 
 
+* 解决方案三：
+  * 即将数据持有在 `ManuallyDrop` 类型中，它会解引用内部类型，不必再使用 `unwrap`
+  * 而在 `drop` 中销毁时，可以用 `ManuallyDrop::take` 函数来获取所有权
+  * 缺点：`ManuallyDrop::take` 函数是 `unsafe` 的
+  * 下边看例子
 
+
+```rust
+use std::{os::fd::AsRawFd, mem::ManuallyDrop};
+
+struct File {
+    // 包装在 ManuallyDrop 中
+    name: ManuallyDrop<String>,
+    fd: ManuallyDrop<i32>,
+}
+
+impl File {
+    fn open(name: &str) -> Result<File, std::io::Error> {
+        // 使用 std::fs::OpenOptions 打开文件，具有读写权限
+        let file = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(name)?;
+
+        // 使用 std::os::unix::io::AsRawFd 获取文件描述符
+        let fd = file.as_raw_fd();
+        
+        // 返回一个 File 实例，包含 name 和 fd 字段
+        Ok(File { 
+            name: ManuallyDrop::new(name.to_string()),
+            fd: ManuallyDrop::new(fd),
+        })
+    }
+
+    // 一个显示的析构函数，关闭文件并返回任何错误
+    fn close(mut self) -> Result<(), std::io::Error> {
+        // use std::mem::replace 将 name 字段替换为空字符串，并获取原来的值 
+        // 或用  String::new() 代替 "".to_string()
+        let name = std::mem::replace(&mut self.name, ManuallyDrop::new("".to_string()));
+
+        // use std::mem::replace 将 fd 字段替换为无需的值，并获取原来的值
+        let fd = std::mem::replace(&mut self.fd, ManuallyDrop::new(-1));
+
+        println!("close Closing file {:?} with fd {:?}", name, fd);
+
+        // use std::os::unix::io::FromRawFd 将 fd 转回 std::fs::File
+        let file: std::fs::File = unsafe {
+            std::os::unix::io::FromRawFd::from_raw_fd(
+                *fd
+            )
+        };
+        // use std::fs::File::sync_all 将任何挂起的写入刷新到磁盘
+        file.sync_all()?;
+        // 使用 std::fs::File::set_len 将文件截断为 0 字节
+        file.set_len(0)?;
+        // 再次 use std::fs::File::sync_all 刷新截断
+        file.sync_all()?;
+
+        // 丢弃 file 实例，它会自动关闭
+        drop(file);
+
+        // 返回 Ok(())
+        Ok(())
+
+
+    }
+}
+
+// 为 File 实现 Drop trait，用于在值离开作用域时运行一些代码
+impl Drop for File {
+    // drop 方法，接受一个可变引用到 self 作为参数
+    fn drop(&mut self) {
+        // 使用 ManuallyDrop::take 取出 name 字段的值，并检查是否是空字符串
+        let name = unsafe { ManuallyDrop::take(&mut self.name) };
+
+        // 使用 ManuallyDrop::take 取出 fd 字段的值，并检查是否是无效的值
+        let fd = unsafe { ManuallyDrop::take(&mut self.fd) };
+
+        println!("drop Closing file {} with fd {}", name, fd);
+
+        // 如果 fd 不是无效的值，说明文件还没有被关闭或丢弃，需要执行一些操作
+        if fd != -1 {
+            let file: std::fs::File = unsafe {
+                std::os::unix::io::FromRawFd::from_raw_fd(
+                    fd
+                )
+            };
+            // 丢弃 file 实例，它会自动关闭
+            drop(file);
+
+        }
+    }
+}
+
+// 用于测试 File 类型的主函数
+fn main() {
+    // 创建一个名为 "test.txt" 的文件，包含一些内容
+    std::fs::write("test.txt", "Hello, world!").unwrap();
+
+    // 打开文件并获取一个 File 实例
+    let file = File::open("test.txt").unwrap();
+
+    println!(
+        "File name: {}, fd: {}", 
+        *file.name, 
+        *file.fd
+    );
+
+    // 关闭文件并处理任何错误
+    // 收到调用析构函数 close
+    match file.close() {
+        Ok(_) => println!("File closed successfully"),
+        Err(e) => println!("Error closing file: {}", e),
+    }
+
+    // check 关闭后的文件大小
+    let metadata = std::fs::metadata("test.txt").unwrap();
+    println!("File size: {} bytes", metadata.len());
+}
+```
+
+
+#### 小结
+* 如果选择上述三种方案
+  * 根据实现情况选择方案
+  * 如果代码足够简单，可轻松检查代码安全性，那么 `ManuallyDrop` 方案也挺好
