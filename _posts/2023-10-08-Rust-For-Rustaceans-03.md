@@ -143,11 +143,35 @@ impl Image {
   
   
 ```rust
+// 一个只在启用了 `foo` 特性时才可用的结构体
+#[cfg(feature = "foo")]
+#[doc(cfg(feature = "foo"))]
+pub struct Foo;
 
+impl Foo {
+    // 一个只在启用了 `foo` 特性时才可用的方法
+    #[cfg(feature = "foo")]
+    #[doc(cfg(feature = "foo"))]
+    pub fn bar(&self) {
+        // ...
+    }
 
-
+}
 ```
   
+  
+## 4.3 类型系统
+* 类型系统可以确保：
+  * 1 接口显而易见
+  * 2 自我描述性
+  * 3 难以被误用
+
+### 4.3.1 语义化类型
+* 即有些值是有超过其表面意义的
+
+
+
+
 
 <!--![image](/assets/images/rust/web_server/teacher_aim.png)-->
 
