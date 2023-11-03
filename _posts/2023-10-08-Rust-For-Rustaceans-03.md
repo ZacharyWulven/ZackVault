@@ -167,17 +167,412 @@ impl Foo {
   * 3 难以被误用
 
 ### 4.3.1 语义化类型
-* 即有些值是有超过其表面意义的
+* 即有些值是有超过其表面意义的（不仅仅适用于基本类型）
+  * 比如 `0 和 1` 它可能代表`男和女`
+
+
+```rust
+/*
+    这里参数是 3 个 bool，用户可能会把其含义给记混了
+*/
+fn process_data(dryRun: bool, overwrite: bool, validate: bool) {
+    // Code...
+}
+
+enum DryRun {
+    Yes,
+    No,
+}
+
+enum Overwriite {
+    Yes,
+    No,
+}
+
+enum Validate {
+    Yes,
+    No,
+}
+/*
+    可以将 bool 定义为枚举，这样更有语义化
+    用户在调用时候就不容易出错
+*/
+fn process_data2(dryRun: DryRun, overwrite: Overwriite, validate: Validate) {
+    // Code...
+
+}
+
+fn main() {
+    process_data2(DryRun::No, Overwriite::Yes, Validate::No);
+}
+```
+
+### 4.3.2 有时可以使用 `零大小的类型` 来表示关于类型实例的特定事实
+* 例子: 比如有个火箭的类型，有个发射的方法，在发射前调用没有问题，但如果发射了再调用就会有问题，那怎么解决呢？
+
+```rust
+struct Grounded;
+
+struct Launched;
+
+enum Color {
+    White,
+    Black,
+}
+
+struct Kilograms(u32);
+
+// 这里泛型不用 T，用 Stage 表示
+// 这里表示 只有 Stage 在 Grounded 时才能创建 🚀
+struct Rocket<Stage = Grounded> {
+    /*
+        PhantomData 在没编译完时候就相当于里边的 Stage
+        而编译完就没有了，就相当于一个单元类型
+        它的作用就是在不同的条件下限制这个火箭类型的行为
+     */
+    stage: std::marker::PhantomData<Stage>,
+}
+
+impl Default for Rocket<Grounded> {
+    fn default() -> Self {
+        Self { 
+            stage: Default::default(),
+        }
+    }
+}
+
+// 这里表示只有 Stage 在 Grounded 时才能发射 🚀
+
+impl Rocket<Grounded> {
+    pub fn launch(self) -> Rocket<Launched> {
+        Rocket { stage: Default::default() }
+    }
+}
+
+// 这里表示只有 🚀 发射后，才能调用加速、减速
+
+impl Rocket<Launched> {
+    pub fn accelerate(&mut self) {}
+    pub fn decelerate(&mut self) {}
+}
+
+// 这些方法在任何阶段都可以调用
+impl<Stage> Rocket<Stage> {
+    
+    pub fn color(&self) -> Color {
+        Color::White
+    }
+
+    pub fn weight(&self) -> Kilograms {
+        Kilograms(0)
+    }
+
+}
+```
+
+### 4.3.3 `#[must_use]` 注解（即必须使用函数的返回值）
+* 将这个注解添加到类型、`Trait` 或函数后，如果用户的代码接收到该类型或 `Trait` 的元素，或调用了该函数，但没有明确的处理它，那么编译器就会发生警告
+
+```rust
+use std::error::Error;
+
+
+/*
+    使用 #[must_use] 注解，表示必须使用 process_data 函数的返回值
+    如果没有使用其返回值，编译器就会发生警告
+    这有助于提醒用户在处理潜在的错误情况时要小心，并减少可能的错误
+*/
+#[must_use]
+fn process_data(data: Data) -> Result<(), Error> {
+
+    Ok(())
+}
+```
+
+
+# 5 受约束（Constrained）
+
+## 5.1 即接口更改时要三思
+* 如果你的接口要做出用户可见的更改，就一定要三思而后行
+  * 要确保你做出的变化：
+    * 不会破坏用户现有的代码
+    * 而且这次更改变化应该保留一段时间，不应该频繁的变化
+  * `频繁的`向后不兼容的更改（主版本增加），会引起用户的不满
+    
+## 5.2 向后不兼容的更改
+* 有些向后不兼容的更改：
+  * 是显而易见的（如你改变了公共的名称，或为它添加一个新的公共方法）
+  * 而有些是很微妙的（这与 Rust 的工作方式相关）
+  
+* 这里主要介绍微妙棘手的更改，以及如何为其制定计划，这时就需要在接口的灵活性上做出权衡、妥协
+
+### 5.2.1 对类型进行修改
+* 如果你移除或重命名一个公共类型，那么几乎肯定会破坏用户的代码
+  * 解决方案：尽可能利用可见性修饰符来解决
+    * 例如：`pub(crate) 即对当前 crate 可见`、`pub(in path) 即对某个路径可见` ...
+
+#### 例子1
+    
+```rust
+pub mod outer_mod {
+    pub mod inner_mod {
+        // This function is visible within `outer_mod`
+        // 只对 mod outer_mod 可见
+        pub(in crate::outer_mod) fn outer_mod_visible_fn() {}
+
+        // This function is visible to the entire crate
+        // 整个 crate 都可见
+        pub(crate) fn crate_visible_fn() {}
+
+        // This function is visible within `outer_mod`
+        // super is outer_mod
+        pub(super) fn super_mod_visible_fn() {
+            // This function is visible since we're in the same `mod`
+            inner_mod_visible_fn();
+        }
+
+        // This function is visible only within `inner_mod`,
+        // which is the same as leaving it private.
+        // 即当前 inner_mod 可见，就类似于是私有的
+        pub(self) fn inner_mod_visible_fn() {}
+    }
+
+    pub fn foo() {
+        inner_mod::outer_mod_visible_fn();
+        inner_mod::crate_visible_fn();
+        inner_mod::super_mod_visible_fn();
+
+        // Error! inner_mod_visible_fn is private
+        // inner_mod::inner_mod_visible_fn();
+    }
+}
+
+
+fn bar() {
+    outer_mod::inner_mod::crate_visible_fn();
+
+    // Error! super_mod_visible_fn is private
+    outer_mod::inner_mod::super_mod_visible_fn();
+
+    // Error! outer_mod_visible_fn is private
+    outer_mod::inner_mod::outer_mod_visible_fn();
+
+    outer_mod::foo(); 
+}
+
+
+fn main() {
+    bar();
+}
+```
+    
+* 如果你的接口里公共类型越少，那么在更改时就越自由（即保证不会破坏现有代码）
+
+#### 例子2：用户的代码不仅仅通过名称依赖于你的类型
+
+```rust
+// lib.rs
+pub struct Unit {
+    field: bool,
+}
 
 
 
+// main.rs
+fn is_true(u: constrained_04::Unit) -> bool {
+    matches!(u, constrained_04::Unit { field: true })
+}
+
+fn main() {
+    // 引用 lib.rs 里的 Unit
+    // 用户原来代码，Unit 中没有任何字段
+    // Unit 添加 field 字段后，这里就报错了
+    // 无论 field 是 pub 还是 private 的都会报错
+    let u = constrained_04::Unit;
+}
+```
+
+* 针对例子 2 的问题，Rust 提供了 `#[non_exhaustive]` 注解来缓解这些问题
+  * `non_exhaustive` 表示类型或枚举在将来可能会添加更多字段或变体
+    * 它可以应用于 `struct、enum、enum variants（枚举变体）`
+  * 如果你在你的 `crate` 中使用 `non_exhaustive` 定义了某个类型，那么在其他 `crate` 中使用你定义的类型，编译器会禁止一些事情：
+    * 禁止隐式构造：`lib::Unit { field: true }`
+    * 禁止非穷尽模式的匹配（即没有尾随 `,` 和 `..` 的模式）
+    * 例子 3
+    
+```rust
+
+// lib.rs
+#[non_exhaustive]
+pub struct Config {
+    pub window_width: u16,
+    pub window_height: u16,
+}
+
+
+fn some_function() {
+    let config = Config {
+        window_width: 640,
+        window_height: 480,
+    };
+
+    // non_exhaustive struct 可以使用这种详尽的方式创建
+    if let Config { 
+        window_width, 
+        window_height
+    } = config {
+        // ....
+    }
+
+}
+
+
+
+// main.rs
+use constrained_04::Config;
+fn main() {
+    // 在 非 non_exhaustive 定义的 crate，这样创建就不行了
+    // Error! 
+    let config = Config {
+        window_width: 640,
+        window_height: 480,
+    };
+
+    // 在 非 non_exhaustive 定义的 crate，这样创建就不行了，Error! 
+    if let Config { 
+        window_width, 
+        window_height,
+        ..       // Note：这里必须加上 `..` 表示忽略其他的字段才行，但上边的构造方式就不被允许，
+                 // Note：加上 `..` 后，work
+    } = config {
+        // ....
+    }
+}
+```
+
+* 如果你的接口比较稳定的话，就应该尽量避免使用该注解
+
+
+### 5.2.2 `Trait` 实现
+
+* Rust 中的一致性规则禁止把某个 `Trait` 为某个类型进行多重实现
+* 因为下边几种情况会引起破坏性的变更
+  * 1 为现有 `Trait` 添加 `Blanket Implementation`，这种变更通常是破坏性变更
+    * 简单的说就是那种泛型形式的实现，类似这样 `impl <T> Foo for T`
+  * 2 为现有类型实现外部 `Trait` 或为外部类型实现现有 `Trait`
+  * 3 移除 `Trait` 的实现
+    * 但为新类型实现 `Trait` 就不是问题，就不是破坏性变更
+
+> 为现有类型实现任何 `Trait` 都要小心，下面看几个例子
+{: .prompt-info }
+
+
+* case1: add impl Foo1 for Unit in this crate
+
+```rust
+// lib.rs
+pub struct Unit;
+
+pub trait Foo1 {
+    fn foo(&self);
+}
+
+// case1: add impl Foo1 for Unit in this crate
+impl Foo1 for Unit {
+    fn foo(&self) {
+        println!("foo1 is called");
+    }
+}
+
+
+// main.rs
+use constrained_04::{Foo1, Unit};
+
+trait Foo2 {
+    fn foo(&self);
+}
+
+impl Foo2 for Unit {
+    fn foo(&self) {
+        println!("foo2 is called");
+    }
+}
+
+fn main() {
+    /*
+        Error! 由于 lib.rs 中实现了 Foo1 中有 foo 方法，
+        而上边又对 Foo2 进行了实现，
+        重名了所以这里就报错了
+     */
+    Unit.foo();
+
+}
+```
+
+* case2: 
+
+```rust
+// lib.rs
+
+pub struct Unit;
+
+pub trait Foo1 {
+    fn foo(&self);
+}
+
+// case2: add a new public trait
+pub trait Bar1 {
+    fn foo(&self);
+}
+
+impl Bar1 for Unit {
+    fn foo(&self) {
+        println!("bar1");
+    }
+}
+
+ 
+
+// main.rs
+
+// use constrained_04::Unit;
+
+use constrained_04::*;
+
+// case1 & case2
+
+trait Foo2 {
+    fn foo(&self);
+}
+
+impl Foo2 for Unit {
+    fn foo(&self) {
+        println!("foo2 is called");
+    }
+}
+
+fn main() {
+    /*
+        case 2: 如果只 use Unit 下边代码不会报错
+        如果 use constrained_04::*，则由于 lib.rs 中实现了 Bar1 中有 foo 方法，
+        重名了所以也会报错
+     */
+    Unit.foo();
+
+}
+```
+
+#### 大多数到现有 `Trait` 的更改也是破坏性更改
+* 例如改变方法签名
+* 或添加新的方法
+  * 但添加新方法时，有默认实现倒数可以的，这就不算破坏性更改
+  
+  
+#### 上边说的都是通常情况下，都算破坏性更改，因为有这样一个方式：
+* 封闭 `Trait`（Sealed Trait）
+  * 即这种 `Trait` 只能被其他 `crate` 使用，而不能在其他 `crate` 中实现
+  * 它的作用就是防止 `Trait` 在添加新方法时，造成破坏性的变更
+  * 它不是内建的功能，有多种实现方式
 
 
 <!--![image](/assets/images/rust/web_server/teacher_aim.png)-->
-
-
-
-
-
-
-
