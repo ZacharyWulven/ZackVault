@@ -567,12 +567,166 @@ fn main() {
 * 或添加新的方法
   * 但添加新方法时，有默认实现倒数可以的，这就不算破坏性更改
   
-  
+
 #### 上边说的都是通常情况下，都算破坏性更改，因为有这样一个方式：
 * 封闭 `Trait`（Sealed Trait）
   * 即这种 `Trait` 只能被其他 `crate` 使用，而不能在其他 `crate` 中实现
   * 它的作用就是防止 `Trait` 在添加新方法时，造成破坏性的变更
   * 它不是内建的功能，有多种实现方式
+  
+* `Sealed Trait` 常用于 `派生 Trait`
+  * 为实现特定其他 `Trait` 的类型提供 `blanket implementation` 的 `Trait`
+  
+* 那什么时候应该使用封闭 `Trait`（Sealed Trait）
+  * 只有在外部 `crate` 不该实现你的 `Trait` 时，才使用 `Sealed Trait`
+  * 这种形式会严重限制 `Trait` 的可用性
+    * 因为下游 `crate` 无法为其自己的类型实现该 `Trait`
+  * 可以使用 `Sealed Trait` 来限制可用作类型参数的类型
+    * 例如：上边 Rocket 例子中 的 Stage 类型限制为仅允许 Grounded 和 Launched 类型
+  * 下面看个例子
+  
+```rust
+// lib.rs
+
+use std::fmt::{Debug, Display};
+
+mod sealed {
+    use std::fmt::{Debug, Display};
+
+    pub trait Sealed {}
+    impl<T> Sealed for T where T: Debug + Display {
+        
+    }
+}
+
+/*
+    这个是想封闭的 trait，它有一个 super trait 
+    super trait 在一个私有模块下，所以其他 crate 无法访问它
+    实现 CanUseCannotImplement 的还必须实现 sealed::Sealed
+    下边我们实现 sealed::Sealed
+*/
+pub trait CanUseCannotImplement: sealed::Sealed {
+    // ...
+}
+
+// 这里实现了 Sealed，T 是 Debug + Display
+impl<T> CanUseCannotImplement for T where T: Debug + Display {
+    
+}
 
 
-<!--![image](/assets/images/rust/web_server/teacher_aim.png)-->
+
+// main.rs
+
+pub struct Bar {
+
+}
+
+impl Debug for Bar {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        Ok(())
+    }
+}
+
+impl Display for Bar {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        Ok(())
+    }
+}
+
+// Error! 因为 lib.rs 已经实现了 CanUseCannotImplement，它就不能实现了
+impl CanUseCannotImplement for Bar {
+    
+}
+
+pub struct Foo {}
+
+// Error! 这里 Foo 没有实现 Debug 和 Display 所以也报错
+impl CanUseCannotImplement for Foo {
+    
+}
+
+fn main() {
+
+}
+```
+ 
+* `Sealed Trait` 能缓解一些问题，但是导致 `Trait` 的可用性大大降低
+
+
+### 5.2.3 隐藏的契约
+* 有时，你对代码的某一部分所做的更改会以微妙的方式影响到接口其他地方的契约，这种情况主要发生在：
+  * 1 重新导出（re-exports）
+  * 2 `自动 Traits`（auto-traits）
+  
+#### 重新导出（re-exports）
+* 如果你接口的某个部分暴露了外部类型，那么外部类型的任何更改也将成为你接口的更改
+  * 最好使用新类型模式（newtype pattern）来包裹外部类型，而且在需要暴露时仅仅暴露外部类型中你认为有用的部分
+  * 下面例子是示意代码
+  
+```rust
+// lib.rs
+
+// 你的 crate 叫 bestiter
+pub fn iter<T>() -> itercrate::Empty<T> { 
+    //...
+}
+
+// 依赖外部 crate，叫 itercrate（v1.0），提供了 Empty<T> 类型
+
+// 用户的 crate 中
+// 用户使用了 你的 crate 的 Empty<T> 类型，
+// 但 Empty<T> 类型是 itercrate（v1.0）中定义的
+struct EmptyIterator { it: itercrate::Empty<()>}
+
+EmptyIterator { it: bestiter:: iter() }
+
+// -----------------------------------------------
+// 你的 crate，叫 bestiter
+pub fn iter<T>() -> itercrate::Empty<T> { 
+    //...
+}
+
+// 依赖外部 crate，叫 itercrate，提供了 Empty<T> 类型
+// 你把依赖 itercrate 版本改为 v2.0, 其他地方没有改
+// 但这时用户的 crate 代码就会报错，问什么？
+// 因为，编译器认为：itercrate1.0::Empty 和 itercrate2.0::Empty 是不同类型
+// 导致破坏性变更
+
+
+// 用户的 crate 中
+struct EmptyIterator { it: itercrate::Empty<()>}
+```
+  
+
+#### `自动 Traits`
+* 有些 `Trait` 会根据类型的内容，对其进行自动实现
+  * 根据这些 `Trait` 它们的特性，它们会为接口中几乎每种类型都添加一个隐藏的承诺
+  * 例如 `Send` 和 `Sync`
+  * `Unpin、Sized、UnwindSafe` 也存在类似的问题
+  * 而这些特性是会传播的，无论是具体类型，还是 `impl Trait` 等类型（这种把类型擦除的情况）
+* 而这些 `Trait` 的实现通常是编译器自动添加的
+  * 这也说明，如果情况不再适用，则编译器不会自动添加
+  * 例如：类型 `A` 里边包含一个私有类型 `B`，默认 `A` 和 `B` 都是 `Send` 的
+    * 如果修改 `B`，让 `B` 不再实现 `Send`，那么 `A` 也变成了不是 `Send` 的
+  * 类似这种情况都是破坏性变化
+* 而且这类变化是难以追踪和发现的
+  * 如何解决？即在你的库中包含一些简单的测试，检查你所有的类型都实现了相关 `Trait`
+  * 看个例子示意
+  
+```rust
+fn is_normal<T>() where T: Sized + Send + Sync + Unpin {
+
+}
+
+#[test]
+fn normal_types() {
+    // MyType 应该实现了 Sized + Send + Sync + Unpin
+    // 如果编译通过了，则说明 MyType 实现了上述 Traits
+    // 如果编译失败了，则说明有些没有实现
+    is_normal::<MyType>();
+}
+```
+
+
+[相关代码](https://github.com/ZacharyWulven/Rust-For-Rustaceans)
