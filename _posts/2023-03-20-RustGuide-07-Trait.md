@@ -144,6 +144,29 @@ fn test_origin() {
 * 使用泛型的代码和使用具体类型的代码运行速度是一样的
 * 单态化（monomorphization）：即在编译时将泛型替换为具体类型的过程
 
+```rust
+fn main() {
+    let integer = Some(5);
+    let float = Some(5.0);
+}
+
+// 单态化编译时展开
+enum Option_i32 {
+    Some(i32),
+    None,
+}
+enum Option_f64 {
+    Some(f64),
+    None,
+}
+
+// 展开后的 main 函数
+fn main() {
+    let integer = Option_i32::Some(5);
+    let float = Option_f64::Some(5.0);
+}
+```
+
 ## Trait
 * 告诉 Rust 编译器
 1. 某种类型具有哪些并且可以与其他类型共享的功能
