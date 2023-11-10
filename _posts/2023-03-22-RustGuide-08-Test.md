@@ -16,17 +16,22 @@ tags: [Rust, Rust Getting Start]
 2. 运行被测试的代码
 3. Assert（断言）结果
 
+
 ### 测试函数使用 test 属性（attribute）进行标注
 * attribute 就是一段 Rust 代码的元数据，不会改变被修饰代码的逻辑，只是对代码进行标注
-* 在函数上加 `#[test]` 才可以把函数变为测试函数，不加 `#[test]` 的不是测试函数。
+
+> 在函数上加 `#[test]` 才可以把函数变为测试函数，不加 `#[test]` 的不是测试函数。
+{: .prompt-info }
+
+
 
 ### 运行测试
 * 使用 `cargo test` 命令运行所有的测试函数
 1. Rust 会构建一个 Test Runner 可执行文件 
 2. Test Runner 就会逐个调用标注了 test attribute 的函数，并报告其运行是否成功
 
-* 当使用 cargo 创建 Library 项目时，会生成一个 test module，里面有一个现成的 test 函数，可以参照这个现成的 test 函数编写其他 test 函数
-
+* 当使用 `cargo` 创建 `Library` 项目时，会生成一个 `test module`，里面有一个现成的 `test` 函数，可以参照这个现成的 `test` 函数编写其他 `test` 函数
+  * 你可以添加任意数量的 `test module` 或函数
 
 ```shell
 // 创建一个库项目叫 adder
@@ -64,7 +69,7 @@ test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fini
 mod tests {
     use super::*;  // 使用 * 将外部模块内容全部导入
 
-    #[test] // 这是一个测试函数
+    #[test] // 标记为：这是一个测试函数
     fn explorer() {
         let result = add(2, 2);
         assert_eq!(result, 4);
@@ -96,10 +101,10 @@ mod tests {
 * 都来自标准库
 * `assert_eq!（equal）`，判断是否相等，实际就是使用 `==`
 * `assert_ne!（not equal）`，判断是否不相等，实际就是使用 `!=`
-* 如果断言失败，这俩宏会自动打印出两个参数的值，方便我们查看原因，而 assert! 只能指定结果，不能知道原因
+* 如果断言失败，这俩宏会自动打印出两个参数的值，方便我们查看原因，而 `assert!` 只能指定结果，不能知道原因
 1. 失败时使用 debug 格式打印参数，
-2. 要求他的参数实现 PartialEq 和 Debug 这俩 Traits（所有的基本类型和标准库里大部分类型都实现了）
-3. 针对 struct 和 enum 需要自己自行实现这个俩 trait
+2. 要求他的参数实现 `PartialEq 和 Debug 这俩 Traits`（所有的基本类型和标准库里大部分类型都实现了）
+3. 针对 `struct` 和 `enum` 需要自己自行实现这个俩 `trait`
 
 * 期待的值可以放 `assert_eq!` 或 `assert_ne!` 里的任何参数位置
 
@@ -138,7 +143,6 @@ fn it_work_greeting() {
 }
 ```
 
-* 下边代码错误信息：thread 'tests::it_work_greeting1' panicked at 'Greeting did not cntain name Hello!', src/lib.rs:53:9
 
 ```rust
 fn greeting1(name: &str) -> String {
@@ -155,12 +159,15 @@ fn greeting1(name: &str) -> String {
     }
 ```
 
+* 上边代码错误信息：thread 'tests::it_work_greeting1' panicked at 'Greeting did not cntain name Hello!', src/lib.rs:53:9
+
+
 ## 用 should_panic 检查 panic
 * 测试函数除了检查代码是否返回正确的值外，还需要检查代码是否如预期的处理了发生错误的情况
-* 可验证代码在特定情况下是否发生了 panic
-* 为函数添加 shoule_panic 属性
-1. 如果标记了 shoule_panic 属性的函数里发生了 panic，那么测试通过
-2. 如果没有发生 panic，那么测试失败
+* 可验证代码在特定情况下是否发生了 `panic`
+* 为函数添加 `shoule_panic` 属性
+1. 如果标记了 `shoule_panic` 属性的函数里发生了 `panic`，那么测试通过
+2. 如果没有发生 `panic`，那么测试失败
 
 ```rust
 pub struct Guess {
@@ -184,8 +191,8 @@ fn greater_than_100() {
 
 ```
 
-* 让 should_panic 更精确
-1. 为 should_panic 属性添加一个可选的 expected 参数，将检查失败消息中是否包含所指定的文字，如包含 expected 的内容则测试通过
+* 让 `should_panic` 更精确
+1. 为 `should_panic` 属性添加一个可选的 `expected` 参数，将检查失败消息中是否包含所指定的文字，如包含 `expected` 的内容则测试通过
 
 ```rust
 pub struct Guess {
@@ -260,7 +267,7 @@ fn it_work_result() -> Result<(), String>{
 2. 不依赖某个共享状态（环境、工作目录、环境变量等等）
 
 ### `--test-threads` 参数
-* 传给二进制文件的
+* 传给二进制文件的，这种命令要加 `--`，例如 `cargo test -- xxx`
 * 用于控制并行线程数
 * 可使用 `--test-threads` 参数，后边跟线程数量
 1. 例：`cargo test -- --test-threads=1`，串行执行
@@ -318,8 +325,8 @@ $ cargo test -- --ignored
 
 ### 单元测试
 * 测试一段代码功能是否符合预期
-* 一般把单元测试代码和被测试代码放在 src 下同一个文件中
-* 同时每个源代码文件都建立一个 test 模块来放这些测试函数
+* 一般把单元测试代码和被测试代码放在 `src` 下同一个文件中
+* 同时每个源代码文件都建立一个 `test` 模块来放这些测试函数
 * 使用 `#[cfg(test)]` 对测试模块进行标注
 1. 标注后，只有运行 `cargo test` 才编译和运行代码。而执行 `cargo build` 时则不会
 
@@ -330,7 +337,7 @@ $ cargo test -- --ignored
 3. 而选项 test 是由 Rust 提供的，用来编译和运行测试
 
 
-> 只有执行 cargo test 才会编译使用 `#[cfg(test)]` 标注的条目，条目包括模块中的 helper 函数和 `#[test]` 标注的函数
+> 只有执行 `cargo test` 才会编译使用 `#[cfg(test)]` 标注的条目，条目包括测试模块中的 `helper` 函数和 `#[test]` 标注的函数
 {: .prompt-info }
 
 
@@ -356,6 +363,8 @@ mod tests {
 * Rust 里允许测试私有函数
 
 ```rust
+// lib.rs
+
 pub fn add_two(a: i32) -> i32 {
     internal_add(a, 2)
 }
