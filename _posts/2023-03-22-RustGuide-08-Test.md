@@ -425,9 +425,13 @@ $ cargo test --test integration_tests
 * `tests` 目录下的每个文件都会被编译成单独的 `crate`
 1. 这些文件不共享行为（与 `src` 下的文件规则不同）
 
-* 在 `tests` 目录下创建，`common` 文件夹，在 `common` 文件夹里创建 `mod.rs` 这样 Rust 不会把其当为测试代码，`common` 相当于是一个模块
+* 在 `tests` 目录下创建，`common` 文件夹，在 `common` 文件夹里创建 `mod.rs` 这样 Rust 不会把其当为测试代码，`common` 相当于是一个模块，
+  * 可以放一些通用函数在这里
+  * 这样 `tests` 目录下的目录不会被编译为单独的 `crate`，只作为模块处理
+
 
 ```rust
+// tests/integration_test.rs
 // 对 lib.rs 进行测试
 // lib.rs 在本模块中，本模块名为 adder
 use adder;
@@ -450,4 +454,4 @@ fn it_adds_two() {
 > 因为只有 `Library Crate` 才能暴露函数给其他 `Crate` 使用，`Binary Crate` 意味着要独立运行
 {: .prompt-info }
 
-* 所以一般 `Binary Crate` 会把逻辑放到 `src/lib.rs` 中，在 `src/main.rs` 中只有简单的调用，这样就可以将其变为 `Library Crate`，并通过 use 关键字访问里边的逻辑，只要里边逻辑代码没有问题了，那么核心功能代码就没有问题了
+* 所以一般 `Binary Crate` 会把逻辑放到 `src/lib.rs` 中，在 `src/main.rs` 中只有简单的调用，这样就可以将其变为 `Library Crate`，并通过 `use` 关键字访问里边的逻辑，只要里边逻辑代码没有问题了，那么核心功能代码就没有问题了
