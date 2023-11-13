@@ -68,23 +68,23 @@ let add_one_v4 = |x| x + 1;
     let s1 = example_closure(5);
 ```
 
-> 闭包的定义最终只会为参数/返回值推断出唯一的具体的类型
+> 闭包的定义最终只会为参数/返回值推断出唯一的具体的类型。可以通过 `()` 调用闭包，像上边的 `example_closure(5)`。
 {: .prompt-info }
 
 
-## 闭包使用泛型参数和 fn trait 来存储闭包
+## 闭包使用泛型参数和 `fn trait` 来存储闭包
 ### 如何解决多次调用闭包？
-* 创建一个 struct，它持有闭包及其调用结果
+* 创建一个 `struct`，它持有闭包及其调用结果
 1. 只在需要结果时才执行该闭包
 2. 执行完就把结果缓存了
 * 这种模式通常叫记忆化（memorization）或延迟计算（lazy evaluation）
-* 如何让 struct 持有闭包
-1. struct 的定义需要知道所有字段的类型，需要指明闭包的类型
+* 如何让 `struct` 持有闭包
+1. `struct` 的定义需要知道所有字段的类型，需要指明闭包的类型
 
 > 每个闭包实例都有自己唯一的匿名类型，即使两个闭包签名完全一样
 {: .prompt-info }
 
-* 所以需要使用泛型和 Trait Bound
+* 所以需要使用泛型和 `Trait Bound`
 
 ### Fn Trait
 * Fn Trait 由标准库提供
