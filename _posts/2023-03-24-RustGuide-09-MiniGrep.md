@@ -97,6 +97,8 @@ pub struct Config {
 
 impl Config {
     // 参数为 vec 的切片
+    // 用户使用上的错误，我们可以考虑使用返回 Result<T,E>
+    // 而程序上的错误可以考虑使用 panic
     pub fn new(args: &[String]) -> Result<Config, &'static str>  {
         if args.len() < 3 {
             return Err("not enough arguments");
@@ -177,7 +179,7 @@ fn main() {
         因为 run 函数 Ok 返回空，所以没有必要提取值
         这里我们只需要处理错误就行了
      */
-    if let Err(e) = minigrep::run(config) {
+    if let Err(e) = minigrep::run(config) {   // 如果 run 返回了 Err，则处理将程序退出
         println!("Application error: {}", e);
         process::exit(1);
     }
@@ -278,12 +280,12 @@ $ cargo run > output.txt
 $ cargo run > output.txt
 ```
 
-> 将 `println!` 替换为 `eprintln!`。这样错误信息回输出到控制台，而 `output.txt` 里没有错误，
+> 将 `println!` 替换为 `eprintln!`。这样错误信息会输出到控制台，而 `output.txt` 里没有错误，
 {: .prompt-info }
 
 ### 小结
 
-> `println!` 内容输出到指定文件中（这里是 `output.txt`），`eprintln!` 内容输出到控制台中显示。
+> `println!` 内容输出到指定文件中（这里是 `output.txt`），`eprintln!` 内容输出到控制台中显示。可以使用 `println!` 将结果输出到文件，而 `eprintln!` 将 `Err` 显示在控制台。
 {: .prompt-info }
 
 
