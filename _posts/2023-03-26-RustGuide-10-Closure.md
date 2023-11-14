@@ -182,7 +182,7 @@ mod tests {
 
 ### 捕获值的方式
 * 与函数获得参数的三种方式一样
-1. 取得所有权：对应 `FnOnce trait`，捕获时将变量的所有权 move 到自己的作用域内
+1. 取得所有权：对应 `FnOnce trait`，捕获时将变量的所有权 `move` 到自己的作用域内
 2. 可变借用：对应 `FnMut`，捕获可变借用，并对其值进行修改
 3. 不可变借用：对应 `Fn`，捕获不可变借用
 
@@ -191,7 +191,7 @@ mod tests {
 2. 而那些不需要移动被捕获的变量的闭包实现了 `FnMut`
 3. 那些不需要对捕获变量进行修改的闭包实现了 `Fn`
 
-> 3 个 trait 有层级关系，所有实现了 Fn 的闭包都实现了 FnMut，而所有实现了 FnMut 的闭包都实现了 FnOnce
+> 3 个 `trait` 有层级关系，所有实现了 `Fn` 的闭包都实现了 `FnMut`，而所有实现了 `FnMut` 的闭包都实现了 `FnOnce`
 {: .prompt-info }
 
 ## Move 关键字
@@ -211,8 +211,30 @@ mod tests {
     assert!(equal_to_x(y));
 ```
 
-> 最佳实践：当指定 Fn trait bound 之一时，首先用 Fn，基于闭包体里的情况，如果需要 FnOnce 或 FnMut，编译器会再告诉你
+* 使用 `mut` 的例子
+
+
+```rust
+fn capture2() {
+    let mut x = vec![1, 2, 3];
+    /*
+        声明闭包，使用 move 关键字
+        将 x 的所有权移动到了闭包里
+     */
+    let mut equal_to_x = move |z| -> bool {
+        x.push(4);
+        println!("test x is {:?}", x);
+
+        x == z
+    };
+    let y = vec![1, 2, 3];
+    assert!(equal_to_x(y) == false);
+}
+```
+
+> 最佳实践：当指定 `Fn trait bound 之一时`，首先用 `Fn`，基于闭包体里的情况，如果需要 `FnOnce 或 FnMut`，编译器会再告诉你
 {: .prompt-info }
+
 
 # 13.2 迭代器
 * 迭代器模式：允许你依次为一系列项里元素执行某些任务
@@ -248,7 +270,7 @@ pub trait Iterator {
 }
 ```
 
-> `type Item` 和 `Self::Item` 定义了与此该 `trait` 关联的类型。实现 `Iterator trait` 需要你定义一个 `Item` 类型，它用于 next 方法的返回类型（即迭代器的返回元素的类型）
+> `type Item` 和 `Self::Item` 定义了与此该 `trait` 关联的类型。实现 `Iterator trait` 需要你定义一个 `Item` 类型，它用于 `next` 方法的返回类型（即迭代器的返回元素的类型）
 {: .prompt-info }
 
 
@@ -282,12 +304,12 @@ mod tests {
 
 ### Note：几个迭代方法
 * iter() 返回不可变引用的迭代器，这时调用 next 方法返回的值是指向集合中的不可变引用，即元素的不可变引用
-* into_iter 方法：创建的迭代器会获得所有权，会把元素 move 到新的作用域内，并取得它的所有权
+* into_iter 方法：创建的迭代器会获得所有权，会把元素 `move` 到新的作用域内，并取得它的所有权
 * iter_mut 方法：就是在遍历元素时使用的是可变的引用
 
 
 ## 消耗迭代器的方法
-* 在标准库中 `Iterator trait` 有一些默认实现的方法。有一些方法会调用 `next` 方法，所以手动实现 `Iterator trait` 时就必须实现 `next` 方法，调用 `next` 方法的方法叫消耗型适配器。因为调用他们会把迭代器耗尽
+* 在标准库中 `Iterator trait` 有一些默认实现的方法。有一些方法会调用 `next` 方法，所以手动实现 `Iterator trait` 时就必须实现 `next` 方法，调用 `next` 方法的方法叫`消耗型适配器`。因为调用他们会把迭代器耗尽
 * 例如，`sum` 方法就会耗尽迭代器，取得迭代器的所有权，`sum` 通过反复调用 `next` 来遍历所有的元素，每次调用就会把当前元素添加到一个总和里，迭代结束，返回总和
 
 ```rust
@@ -301,7 +323,7 @@ mod tests {
 ```
 
 ## 产生其他迭代器的方法
-* 在 `Iterator trait` 上还定义了另一种方法叫“迭代器适配器”
+* 在 `Iterator trait` 上还定义了另一种方法叫`迭代器适配器`
 1. 作用是把当前迭代器转化为不同种类的迭代器
 * 可以通过链式调用使用多个迭代器适配器来执行复杂操作，这种调用可读性较高
 * 例如：`map`，接收一个闭包作为参数，闭包作用与迭代器的每个元素，产生新的迭代器
@@ -314,6 +336,7 @@ mod tests {
 
         // v1.iter().map(|x| x + 1) 并不会对每个元素进行加 1，因为没有消耗迭代器
         // v1.iter().map(|x| x + 1);
+        // 调用 collect() 进行消耗性的操作
 
         // Vec<_> 由编译器自行推断
         let v2: Vec<_> = v1.iter().map(|x| x + 1).collect();
@@ -392,7 +415,7 @@ impl Iterator for Counter {
     #[test]
     fn using_iterator_methods() {
         /*
-            zip 即把两个迭代器合并在一起，里边的元素分别来自那两个迭代器
+            zip 即把两个迭代器合并在一起，里边的元素分别来自那两个迭代器，相当于生成一个元组
             Counter::new().skip(1) 略过第一个元素，即从 2 遍历到 5
          */
         let sum: u32 = Counter::new()
@@ -430,8 +453,8 @@ impl Iterator for Counter {
 // lib.rs
 impl Config {
     // 参数为 vec 的切片
-    //pub fn new(args: &[String]) -> Result<Config, &'static str>  {
-    // 加 mut 因为，迭代器会修改自身的状态
+    // pub fn new(args: &[String]) -> Result<Config, &'static str>  {
+    // std::env::Args 就是一个迭代器，加 mut 因为，迭代器会修改自身的状态
     pub fn new(mut args: std::env::Args) -> Result<Config, &'static str>  {
 
         if args.len() < 3 {
