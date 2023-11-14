@@ -84,8 +84,8 @@ $ cargo doc
 
 ### 生产 HTML 文档的命令
 * cargo doc
-1. 它会运行 rustdoc 这个工具（Rust 安装时自带）
-2. 将生成的 HTML 文档放在 target/doc 目录下
+1. 它会运行 `rustdoc` 这个工具（Rust 安装时自带）
+2. 将生成的 HTML 文档放在 `target/doc` 目录下
 
 
 ```shell
@@ -94,11 +94,12 @@ $ cargo doc
 $ cargo doc --open
 ```
 
+
 ### 文档常用的章节
 * `# Examples`
-* `# Panics` 描述函数可能发生 panic 的场景，开发人员需要注意
-* `# Errors` 描述如果函数返回 Result，可能的错误种类，以及可导致错误的条件
-* `# Safety` 如果函数处于 unsafe 调用，就应该解释函数 unsafe 的原因，以及调用者确保的使用前提
+* `# Panics` 描述函数可能发生 `panic` 的场景，开发人员需要注意
+* `# Errors` 描述如果函数返回 `Result`，可能的错误种类，以及可导致错误的条件
+* `# Safety` 如果函数处于 `unsafe` 调用，就应该解释函数 `unsafe` 的原因，以及调用者确保的使用前提
 
 ### 文档注释作为测试
 * 运行 cargo test，将会把文档注释中的示例代码作为测试来运行
@@ -148,7 +149,34 @@ pub fn add_one(x: i32) -> i32 {
 {: .prompt-info }
 
 ```rust
-pub use self::module
+// lib.rs
+// 使用 pub use 对 PrimaryColor 重新导出
+pub use self::kinds::PrimaryColor;
+
+pub mod kinds {
+
+    #[derive(Debug)]
+    pub enum PrimaryColor {
+        Red,
+        Blue,
+    }
+
+}
+
+
+// main.rs
+
+// pub use 前
+// use publishCrate_14::kinds::PrimaryColor;
+
+// pub use 后, 这样导入就可以了！
+use publishCrate_14::PrimaryColor;
+
+fn main() {
+
+    let color = PrimaryColor::Blue;
+    println!("color = {:?}", color);
+}
 ```
 
 
@@ -262,6 +290,11 @@ $ cargo build
 $ cargo new add-one --lib
 ```
 
+
+> 在 `workspace` 中 `cargo build`，产生 `Cargo.lock` 和 `target` 目录（`所有成员的编译产出物`）。这里 `adder` 没有自己的 `target` 目录，都会输出在 `workspace` 目录下的 `target` 中，所有成员共享 `target`，避免了依赖导致的重复编译
+{: .prompt-info }
+
+
 * 让 `adder` 依赖 `add-one`，编辑 `adder` 里的 Cargo.toml
 
 ```
@@ -293,10 +326,10 @@ fn main() {
 $ cargo run -p adder
 ```
 
-### 在 workspace 中依赖外部 crate
-* workspace 只有一个 Cargo.lock 文件，它在 workspace 顶层目录
-1. 这保证 workspace 内所有的 crate 依赖的版本都是相同的
-2. workspace 内所有 crate 是相互兼容的
+### 在 `workspace` 中依赖外部 `crate`
+* `workspace` 只有一个 `Cargo.lock` 文件，它在 `workspace` 顶层目录
+1. 这保证 `workspace` 内所有的 `crate` 依赖的版本都是相同的
+2. `workspace` 内所有 `crate` 是相互兼容的
 
 ```
 [package]
@@ -330,7 +363,7 @@ $ cargo test -p add-one
 ```
 
 
-> `cargo publish` 没有提供类似 `all` 或 `-p` 的参数，所以对于 `workspace` 中的 `crate`，必须到各自的 `crate` 目录下执行 `cargo publish` 进行单独发布
+> Note：`cargo publish` 没有提供类似 `all` 或 `-p` 的参数，所以对于 `workspace` 中的 `crate`，必须到各自的 `crate` 目录下执行 `cargo publish` 进行单独发布
 {: .prompt-info }
 
 
