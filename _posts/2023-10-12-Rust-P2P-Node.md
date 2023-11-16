@@ -107,3 +107,341 @@ tags: [Rust, Rust Async]
 
 
 ## `P2P` 节点的身份
+
+### 公钥和私钥
+* 加密身份使用公钥基础设置（PKI），广泛用于为用户、设备和应用程序提供唯一身份，并保护端到端通信的安全
+* 它的原理是创建两个不同的加密密钥，也称为由私钥和公钥组成的密钥对，它们之间具有数字关系
+* 密钥对有着广泛的应用，比如在 `P2P` 网络中：
+  * 节点使用密钥对彼此进行身份识别和身份验证
+  * 公钥可以在网络中与其他人共享，但决不能泄露节点的私钥
+
+
+> Note：需要安装 `cmake`，并把 `cmake` 的路径添加到 `PATH`
+{: .prompt-info }
+
+
+## 多地址（Multiaddresses）
+* 在 `libp2p` 中，`Peer` 的身份在其整个生命周期内都是稳定且可验证的
+* 但 `libp2p` 区分了 `Peer` 的身份和位置
+  * `Peer` 的身份就是 `PeerId`
+* `Peer` 的位置指可以到达对方的网络地址
+  * 例如：可以通过 `TCP、websockets、QUIC` 或任何其他协议访问 `Peer`
+  * `libp2p` 将这些网络地址编码成一个自描述格式，它叫做 `Multiaddresses`
+  * 因此，在 `libp2p` 中，`Multiaddresses` 就表示 `Peer` 的位置
+* 当 `P2P` 网络上的节点共享其联系信息时，它会发送一个包含网络地址和 `PeerId` 的多地址
+* 节点的多地址的 `PeerId` 表示如下：
+  * `/p2p/I2D3Kooxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx`
+* 多地址的网络地址表示如下：
+  * `ip4/192.157.1.23/tcp/1234`
+* 节点的完整的多地址就是 `PeerId` 和网络地址的组合
+  * `ip4/192.157.1.23/tcp/1234/p2p/I2D3Kooxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx`
+  * 即网络地址+多地址
+
+
+## `Swarm` 和网络行为
+* `Swarm` 是 `libp2p` 中给定 `P2P` 节点内的网络管理器模块
+* 它维护从给定节点到远程节点的所有活动和挂起连接，并管理已打开的所有子流状态
+
+### `Swarm` 的结构和上下文环境
+* `Swarm` 代表了一个低级接口，并提供了对 `libp2p` 网络的细粒度控制。 
+* `Swarm` 是使用传输、网络行为和节点 `PeerId` 的组合构建的
+* 传输（Transport）：会指明如何在网络上发送字节，而`Swarm` 中的网络行为会指明发送什么字节，发送给谁
+  * 多个网络行为可以与单个运行节点相关联
+  
+  
+![image](/assets/images/rust/swarm.png)
+  
+
+> Note：`libp2p` 网络中所有节点上运行的是同一套代码，这与 `Client-Server` 模式下的客户端与服务器具有不同的代码库是不同的
+{: .prompt-info }
+
+
+## Demo1：生成 `PeerId`
+
+
+```rust
+// main.rs
+
+use libp2p::{identity, PeerId};
+use libp2p::futures::StreamExt;
+use libp2p::swarm::{DummyBehaviour, Swarm, SwarmEvent};
+use std::error::Error;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn Error>> {
+    // 密钥对的类型是 25519
+    let new_key = identity::Keypair::generate_ed25519();
+    /*
+        使用密钥对的公钥(new_key.public())生产 PeerId
+        在 libp2p 中，公钥不会用来直接验证 Peer 的身份，
+        我们使用的是它的一个 hash 的版本，也就是这个 peer_id
+     */
+    let new_peer_id = PeerId::from(new_key.public());
+    println!("New Peer ID is {:?}", new_peer_id);
+
+    // 创建一个空的网络行为，这个行为会关联到 swarm
+    let behaviour = DummyBehaviour::default();
+    // 创建一个传输
+    let transport = libp2p::development_transport(new_key).await?;
+    let mut swarm = Swarm::new(transport, behaviour, new_peer_id);
+    // 让 swarm 监听 0.0.0.0 地址，端口是 0，
+    // 0.0.0.0 表示本地机器上所有的 ipv4 的地址
+    // 端口 0 指随机选一个端口
+    swarm.listen_on("/ip4/0.0.0.0/tcp/0".parse()?)?;
+
+
+    /*
+        持续的轮询来检查事件
+     */
+    loop {
+        match swarm.select_next_some().await {
+            /*
+                如果是 SwarmEvent::NewListenAddr 事件，
+                即创建一个新的监听地址
+             */
+            SwarmEvent::NewListenAddr { address, .. } => {
+                println!("Listening on Local Address {:?}", address);
+            }
+            _ => {}
+        }
+    }
+
+}
+```
+
+
+```rust
+// Cargo.toml
+
+[package]
+name = "p2p"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+libp2p = "0.46.1"
+tokio = { version = "1.19.2", features = ["full"]}
+```
+
+* 测试：然后开两个终端运行 `carog run`，下边表示监听本地 63126 端口
+
+```
+New Peer ID is PeerId("12D3KooWHKUjLaSd4tSnvtKqhBP9S429nsjN8XoC5UWCkWFvdrHv")
+Listening on Local Address "/ip4/127.0.0.1/tcp/63126"
+Listening on Local Address "/ip4/192.168.50.227/tcp/63126"
+```
+
+## Demo2：在 `Peer` 节点之间交换 `ping` 命令
+
+```rust
+// main.rs
+
+use libp2p::{identity, PeerId, Multiaddr};
+use libp2p::futures::StreamExt;
+use libp2p::swarm::{DummyBehaviour, Swarm, SwarmEvent};
+use std::error::Error;
+use libp2p::ping::{Ping, PingConfig};
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn Error>> {
+    // 密钥对的类型是 25519
+    let new_key = identity::Keypair::generate_ed25519();
+    /*
+        使用密钥对的公钥(new_key.public())生产 PeerId
+        在 libp2p 中，公钥不会用来直接验证 Peer 的身份，
+        我们使用的是它的一个 hash 的版本，也就是这个 peer_id
+     */
+    let new_peer_id = PeerId::from(new_key.public());
+    println!("New Peer ID is {:?}", new_peer_id);
+
+    // 创建一个空的网络行为，这个行为会关联到 swarm
+    // let behaviour = DummyBehaviour::default();
+
+    // 创建 ping 网络行为
+    let behaviour = Ping::new(PingConfig::new().with_keep_alive(true));
+
+
+    // 创建一个传输
+    let transport = libp2p::development_transport(new_key).await?;
+    let mut swarm = Swarm::new(transport, behaviour, new_peer_id);
+    // 让 swarm 监听 0.0.0.0 地址，端口是 0，
+    // 0.0.0.0 表示本地机器上所有的 ipv4 的地址
+    // 端口 0 指随机选一个端口
+    swarm.listen_on("/ip4/0.0.0.0/tcp/0".parse()?)?;
+
+    // 
+    /*
+        本地向远程地址发出连接的代码
+        远程地址是命令行输入的参数中取出的
+     */
+    if let Some(remote_peer) = std::env::args().nth(1) {
+        let remote_peer_multiaddr: Multiaddr = remote_peer.parse()?;
+        swarm.dial(remote_peer_multiaddr)?;
+        println!("Dialed remote peer: {:?}", remote_peer);
+    }
+
+    /*
+        持续的轮询来检查事件
+     */
+    loop {
+        match swarm.select_next_some().await {
+            /*
+                如果是 SwarmEvent::NewListenAddr 事件，
+                即创建一个新的监听地址
+             */
+            SwarmEvent::NewListenAddr { address, .. } => {
+                println!("Listening on Local Address {:?}", address);
+            }
+            /*
+                当本地节点发送 Ping 消息时，远程节点会返回 Pong，
+                接收到 Pong 消息，会打印下边代码
+             */
+            SwarmEvent::Behaviour(event) => {
+                println!("Event received from peer is {:?}", event);
+            }
+            _ => {}
+        }
+    }
+
+}
+```
+
+* 测试：开一个终端运行 `carog run`，先把地址 `copy` 一下，例如 `/ip4/127.0.0.1/tcp/49469`
+* 然后再开一个终端运行 `carog run /ip4/127.0.0.1/tcp/49469`
+
+
+```
+New Peer ID is PeerId("12D3KooWRnAHf1L7aww8KPocuf64BU4FoG18nFTQEpiR1pLPmhjY")
+Dialed remote peer: "/ip4/127.0.0.1/tcp/49469"        // 对 这个地址进行拨号
+Listening on Local Address "/ip4/127.0.0.1/tcp/50077"
+Listening on Local Address "/ip4/192.168.50.227/tcp/50077"
+Event received from peer is Event { peer: PeerId("12D3KooWMP4yRQs4iPyNSkRtct2EWJFzAzYBHcNnrR5SDaG5ThfP"), result: Ok(Pong) } // 接收到 Pong 消息
+Event received from peer is Event { peer: PeerId("12D3KooWMP4yRQs4iPyNSkRtct2EWJFzAzYBHcNnrR5SDaG5ThfP"), result: Ok(Ping { rtt: 517.041µs }) }
+Event received from peer is Event { peer: PeerId("12D3KooWMP4yRQs4iPyNSkRtct2EWJFzAzYBHcNnrR5SDaG5ThfP"), result: Ok(Pong) }
+Event received from peer is Event { peer: PeerId("12D3KooWMP4yRQs4iPyNSkRtct2EWJFzAzYBHcNnrR5SDaG5ThfP"), result: Ok(Ping { rtt: 591.638µs }) }
+```
+
+
+## Demo3：发现 `Peer`
+* `mDNS` 是由 RFC6762 定义的协议，它将主机名解析为 IP 地址
+  * 在 `libp2p` 中，它用于发现网络上的其他节点
+* 在 `libp2p` 中实现的 `mDNS` 网络行为，它会自动的发现本地网络上的其他 `libp2p` 节点
+
+
+```rust
+// main.rs
+use libp2p::{
+    futures::StreamExt,
+    identity,
+    mdns::{Mdns, MdnsConfig, MdnsEvent},
+    swarm::{Swarm, SwarmEvent},
+    PeerId,
+};
+use std::error::Error;
+
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn Error>> {
+    // 密钥对的类型是 25519
+    let new_key = identity::Keypair::generate_ed25519();
+    /*
+        使用密钥对的公钥(new_key.public())生产 PeerId
+        在 libp2p 中，公钥不会用来直接验证 Peer 的身份，
+        我们使用的是它的一个 hash 的版本，也就是这个 peer_id
+     */
+    let new_peer_id = PeerId::from(new_key.public());
+    println!("New Peer ID is {:?}", new_peer_id);
+
+    // 创建一个传输
+    let transport = libp2p::development_transport(new_key).await?;
+
+    // for create peer id: 创建一个空的网络行为，这个行为会关联到 swarm
+    // let behaviour = DummyBehaviour::default();
+
+    // for ping: 创建 ping 网络行为
+    // let behaviour = Ping::new(PingConfig::new().with_keep_alive(true));
+
+    // for mdns
+    let behaviour = Mdns::new(MdnsConfig::default()).await?;
+
+    let mut swarm = Swarm::new(transport, behaviour, new_peer_id);
+    // 让 swarm 监听 0.0.0.0 地址，端口是 0，
+    // 0.0.0.0 表示本地机器上所有的 ipv4 的地址
+    // 端口 0 指随机选一个端口
+    swarm.listen_on("/ip4/0.0.0.0/tcp/0".parse()?)?;
+
+    // 
+    /*
+        本地向远程地址发出连接的代码
+        远程地址是命令行输入的参数中取出的
+        only for ping
+
+     */
+    // if let Some(remote_peer) = std::env::args().nth(1) {
+    //     let remote_peer_multiaddr: Multiaddr = remote_peer.parse()?;
+    //     swarm.dial(remote_peer_multiaddr)?;
+    //     println!("Dialed remote peer: {:?}", remote_peer);
+    // }
+
+    /*
+        持续的轮询来检查事件
+     */
+    loop {
+        match swarm.select_next_some().await {
+            /*
+                如果是 SwarmEvent::NewListenAddr 事件，
+                即创建一个新的监听地址
+             */
+            SwarmEvent::NewListenAddr { address, .. } => {
+                println!("Listening on Local Address {:?}", address);
+            }
+            /*
+                当本地节点发送 Ping 消息时，远程节点会返回 Pong，
+                接收到 Pong 消息，会打印下边代码
+                only for ping
+
+             */
+            // SwarmEvent::Behaviour(event) => {
+            //     println!("Event received from peer is {:?}", event);
+            // }
+            SwarmEvent::Behaviour(
+                // 这个事件，表示发现 peer 了
+                MdnsEvent::Discovered(peers)) => {
+                    for (peer, addr) in peers {
+                        println!("discovered peer={}, addr={}", peer, addr);
+                    }
+            }
+            SwarmEvent::Behaviour(
+                // 这个事件，表示过期了
+                MdnsEvent::Expired(expired)) => {
+                    for (peer, addr) in expired {
+                        println!("expired peer={}, addr={}", peer, addr);
+                    }
+            }
+            _ => {}
+        }
+    }
+
+}
+```
+
+
+> 本次多开几个终端运行 `cargo run` 即可，不需要在命令后传入地址，因为它会自动发现节点
+{: .prompt-info }
+
+
+```
+New Peer ID is PeerId("12D3KooWMTtqj2gye9d5HNLNMLMT7vw4yKBTerAsQieKQgyabjP2")
+Listening on Local Address "/ip4/127.0.0.1/tcp/53946"
+Listening on Local Address "/ip4/192.168.50.227/tcp/53946"
+discovered peer=12D3KooWNehdbAVLuPkudvpzmmcJG9ydtQPSdqWRtA7oyh7uEDmM, addr=/ip4/192.168.50.227/tcp/53781
+discovered peer=12D3KooWNehdbAVLuPkudvpzmmcJG9ydtQPSdqWRtA7oyh7uEDmM, addr=/ip4/127.0.0.1/tcp/53781
+discovered peer=12D3KooWRQpxJqFcaMr5FgEDYX9LAUPsS8beMfaZmRLeSf3byXXm, addr=/ip4/192.168.50.227/tcp/53747
+discovered peer=12D3KooWRQpxJqFcaMr5FgEDYX9LAUPsS8beMfaZmRLeSf3byXXm, addr=/ip4/127.0.0.1/tcp/53747
+discovered peer=12D3KooWJwLBj2Bw6ev6PBJP2FGpdj1ehCBm4K2n7mjUMC96Rqqa, addr=/ip4/192.168.50.227/tcp/53854
+discovered peer=12D3KooWJwLBj2Bw6ev6PBJP2FGpdj1ehCBm4K2n7mjUMC96Rqqa, addr=/ip4/127.0.0.1/tcp/53854
+```
+
+* 更多教程可以查阅 `libp2p` 官方文档，或购买相关书籍
