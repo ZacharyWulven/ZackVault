@@ -357,6 +357,8 @@ fn main() {
         /*
             Rc::clone 不会深 copy，执行速度快
             而 a.clone() 会进行深 copy，需要花费大量时间来完成数据的 copy
+            
+            c 走出作用域，会自动 drop，a 的引用计数减 1 
         */
     }
     println!("Count after c goes out of scope = {}", Rc::strong_count(&a));
@@ -401,12 +403,12 @@ fn main() {
 
 ### `RefCell<T>` VS `Box<T>`
 * `Box<T>`
-1. 编译阶段就强制代码遵守这个借用规则
+1. `编译阶段`就强制代码遵守这个借用规则
 2. 没有满足则出现错误
 
 
 * `RefCell<T>`
-1. 只会在运行时检查借用规则
+1. 只会在`运行时`检查借用规则
 2. 没有满足就会触发 panic
 
 ### 借用规则在不同阶段进行检查的比较
