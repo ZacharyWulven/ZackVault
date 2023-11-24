@@ -456,6 +456,9 @@ fn main() {
 1. 每次调用 `borrow` 方法，不可变借用计数加 1。任何一个 `Ref<T>` 的值离开作用域被释放时，不可变借用计数减 1
 2. 每次调用 `borrow_mut` 方法，可变借用计数加 1。任何一个 `RefMut<T>` 的值离开作用域被释放时，可变借用计数减 1
 
+> Rust 就是通过这个技术来维护借用检查规则的。在任何一个给定时间里，只允许拥有多个不可变借用或一个可变借用，如果违反了，则 `RefCell<T>` 在运行时就会 `panic`
+{: .prompt-info }
+
 ```rust
 pub trait Messenger {
     fn send(&self, msg: &str);
@@ -518,14 +521,14 @@ mod tests {
         let mock_messenger = MockMessenger::new();
         let mut limit_tracker = LimitTracker::new(&mock_messenger, 100);
         limit_tracker.set_value(80);
+        // borrow() 获取内部值的不可变引用
         assert_eq!(mock_messenger.sent_messages.borrow().len(), 1);
     }
 
 }
 ```
 
-> Rust 就是通过这个技术来维护借用检查规则的。在任何一个给定时间里，只允许拥有多个不可变借用或一个可变借用，如果违反了，则 `RefCell<T>` 在运行时就会 `panic`
-{: .prompt-info }
+
 
 ### `Rc<T>` 与 `RefCell<T>` 结合使用来实现一个拥有多重所有权的可变数据
 
@@ -630,13 +633,13 @@ fn main() {
 2. 而只有持有所有权关系才会影响某个值释放被释放清理
 
 * 防止循环引用的解决方案：可以把 `Rc<T>` 换成 `Weak<T>`
-* `Rc::clone` 为 `Rc<T>` 实例的 `strong_count` 加 1，`Rc<T>` 的实例只有在 `strong_count 为 0 的时候才会被清理
+* `Rc::clone` 为 `Rc<T>` 实例的 `strong_count` 加 1，`Rc<T>` 的实例只有在 `strong_count 为 0` 的时候才会被清理
 * `Rc<T>` 实例可以通过调用 `Rc::downgrade` 方法来创建值的 `Weak Reference`（弱引用），返回类型是 `Weak<T>`（也是智能指针）
 * 每次调用 `Rc::downgrade` 会为 weak_count 加 1
 * `Rc<T>` 使用 `weak_count` 来追踪存在多少 `Weak<T>`
 
 
-> weak_count 不为 0 并不影响 `Rc<T>` 实例的清理
+> `weak_count 不为 0` 并不影响 `Rc<T>` 实例的清理
 {: .prompt-info }
 
 

@@ -63,14 +63,14 @@ fn main() {
 * 上边代码，主线程结束，异步线程也结束了，这样不好，如何能保证异步线程任务完成呢？可使用 JoinHandle
 
 ### 通过 `JoinHandle` 来等待所有线程的完成
-* `thread::spawn` 函数的返回值类型时 `JoinHandle`
+* `thread::spawn` 函数的返回值类型是 `JoinHandle`
 * `JoinHandle` 是持有值的所有权的
-1. 调用 join 方法，就可以等待对应其他线程的完成
+1. 调用 `join` 方法，就可以等待对应其他线程的完成
 
-* join 方法：调用 handle 的 join 方法会阻止当前运行线程的执行，直到 handle 所表示的这个些线程终结
+* `join` 方法：调用 `handle` 的 `join` 方法会阻止当前运行线程的执行，直到 `handle` 所表示的这个些线程终结
 
 
-> 类似 swift semaphore 的 wait
+> 类似 `swift semaphore 的 wait`
 {: .prompt-info }
 
 
