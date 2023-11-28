@@ -1,6 +1,6 @@
 ---
 layout: post
-title: Rust 中级教程-类型主题
+title: Rust 中级教程-类型主题-01
 date: 2023-10-14 16:45:30.000000000 +09:00
 categories: [Rust, Rust Type]
 tags: [Rust, Rust Type]
@@ -605,6 +605,114 @@ fn main() {
 ## 10 虚拟内存
 * 即程序的内存视图，程序可以访问的所有数据都是由操作系统在其他地址空间中提供的
 * 直觉上，程序的内存就是一系列的字节，从开始位置 `0` 到结束位置 `n`
+  * 例如：程序汇报使用了 100 KB 的 RAM（内存），那么 n 就应该是在 100000 左右
+
+
+```rust
+fn main() {
+
+    let mut n_nonzero = 0;
+
+    /*
+        扫描运行内存，从 0 开始扫描
+        当 i == 0 时，就是 null 指针，是非法的
+    */
+    for i in 0..10000 {
+        let ptr = i as *const u8;
+        let byte_at_addr = unsafe { *ptr };
+
+        if byte_at_addr != 0 {
+            n_nonzero += 1;
+        }
+    }
+
+    println!("内存中的非 0 字节：{}", n_nonzero); // Error: 68355 segmentation fault  cargo run
+
+}
+```
+
+> `segmentation fault` 指当 CPU 或 OS 检测到程序试图请求非法（无权访问）内存地址时，所产生的错误
+{: .prompt-info }
+
+
+* 看一下各个变量的内存地址分布
+
+```rust
+// 静态全局变量
+static GLOBAL: i32 = 1000;
+
+fn noop() -> *const i32 {
+    let noop_local = 123456;
+    &noop_local as *const i32
+}
+
+fn main() {
+    let local_str = "a";
+    let local_int = 123;
+    let boxed_str = Box::new('b');
+    let boxed_int = Box::new(789);
+    let fn_int = noop();
+
+    println!("GLOBAL:        {:p}", &GLOBAL as *const i32);    // GLOBAL:        0x10df4b190
+    println!("local_str:     {:p}", local_str as *const str);  // local_str:     0x10df4b194
+    println!("local_int:     {:p}", &local_int as *const i32); // local_int:     0x7ff7b1ff3f8c
+    println!("boxed_int:     {:p}", Box::into_raw(boxed_int)); // boxed_int:     0x7fefeef05b50
+    println!("boxed_str:     {:p}", Box::into_raw(boxed_str)); // boxed_str:     0x7fefeef05b40
+    println!("fn_int:        {:p}", fn_int);                   // fn_int:        0x7ff7b1ff3ebc
+}
+```
+
+* `segment`：虚拟内存中的块。虚拟内存被划分为很多块，目的是可以以最小化虚拟和物理地址之间转换所需要的空间。
+* 通过上边例子，可以发现某些内存地址是非法的：访问越界的内存，OS 就会关掉你的程序。
+* 另外内存地址并不是随机的：看起来在地址空间内分布的比较广，值相当于是分成了几堆儿。
+
+
+### 翻译虚拟地址到物理地址
+* 程序里访问数据都是需要虚拟地址的（程序只能访问虚拟地址）
+* 虚拟地址会被翻译成物理地址
+  * 这里涉及程序、OS、CPU、RAM 硬件，有时涉及硬盘或其他设备
+  * CPU 复杂执行翻译，OS 负责存储指令
+  * CPU 包含一个内存管理单元（MMU）负责这项工作
+  * 这些指令也存在内存中一个预定义的地址中
+* 最坏情况下，每次访问内存都会发生两次内存查找
+  * 一个是内存的查找，另一个是指令查找
+* CPU 会维护一个最近转换地址的缓存
+  * 它有自己的快速内存来加速内存的访问
+  * 历史原因，该内存称为转换后备缓冲区（Translation Lookaside Buffer，TLB）
+  
+* 为了提高性能，程序员需要保持数据结构的精简，避免深度嵌套
+  * 尤其是达到 TLB 的容量后（对于 x86 处理器，通常约为 100 页）可能成本更高
+
+* 页（Page）：实际内存中固定大小的字块，64 为系统通常是 4K 一页
+* 字（Word）：指针大小的任何类型，对应 CPU 寄存器的宽度
+  * `usize` 和 `isize` 就是字长类型（word-length type）
+
+* 虚拟地址被分为很多块，叫做页，通常 4K 大小
+  * 这样好处是：避免了需要为每个变量都存储转换映射
+  * 页是统一大小的，这有助于避免内存碎片（碎片即：可用 RAM 中出现空的，但不可用的空间）
+
+
+> Note：上面这些只是通用性指导，例如像微控制器情况就不同了。
+{: .prompt-info }
+
+
+### 数据在 RAM 中展示的指导建议
+* 将程序热工作的部分保持在 4KB 以内，从而保持快速查找
+* 如果 4KB 不合理，那么下一个目标就是 `4KB * 100`
+  * 这意味着 CPU 可维护其转换缓存（TLB）来支持你的程序
+* 另外一点就是避免深度嵌套的数据结构
+  * 如果指针指向另一个页，那么性能就会受到影响
+* 测试嵌套循环的顺序：
+  * CPU 会从 RAM 读取小块字节（cache line、缓存行）。在处理数组时，可以通过判断是按列操作还是按行操作来利用这一点
+
+
+### 注意
+* 虚拟化会让情况更糟糕，如果在虚拟机中运行程序，Hypervisor 还必须为其客户 OS 转换地址。
+  * 这就是为什么许多 CPU 附带虚拟化支持，这可以减少额外开销
+* 如果在虚拟机中运行容器又添加了一层间接，也增加了延迟
+* 如果想获得裸机的性能，就必须在裸机上运行程序
+
+* 系统调用（system call）：OS 提供了接口可让程序发出请求
 
 
 
