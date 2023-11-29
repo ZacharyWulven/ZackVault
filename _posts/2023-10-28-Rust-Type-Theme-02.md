@@ -216,6 +216,206 @@ fn main() {
   * 返回值的副本（读取）
 
 
+# 0x05 生命周期（补充）
+
+* 官方教程提到：
+  * Rust 里每个引用都有生命周期，它就是`引用保持合法的作用域（scope）`，大多数时候是隐式和推断出来的
+* 即对某个变量取得引用时生命周期就开始了，当变量移动或离开作用域时生命周期就结束了
+* 其实对于生命周期：对于某个引用来说，它必须保持合法的一个代码区域的名称
+  * 生命周期通常与作用域重合，但也不一定
+
+## 借用检查器（Borrow Checker）
+* 每当具有某个生命周期 `'a` 的引用被使用，借用检查器都会检查 `'a` 是否还存活
+  * 追踪路径直到 `'a` 开始（获得引用）的地方
+  * 从这开始，检查沿着路径是否存在冲突，保证引用指向一个可安全访问的值
+  * 例子
+
+
+```rust
+use rand::prelude::*;
+ 
+fn main() {
+    let mut x = Box::new(42);
+    let r = &x;      // (1) 'a，生命周期开始
+
+    /*
+        可以看到 'a 生命周期并没有延伸到 if 中，
+        所以生命周期不一定与作用域重合
+     */
+    if random::<f32>() > 0.5 {
+        *x = 84;   // (2) 需要 x 的可变引用，检查到这是合法的
+        // println!("{}", r); // 如果这行在这就 Error，因为违反了借用规则
+    } else {
+        println!("{}", r); // (3) 'a，因为编译器指定 if else 只会走一个所以这里是 Ok 的
+    }
+
+}
+// (4)
+```
+
+* 生命周期很复杂：也有漏洞，间歇性的失效的例子
+  * 有时需要重启生命周期
+
+```rust
+fn main() {
+    let mut x = Box::new(42);
+
+    let mut z = &x;  // (1) 'a，生命周期开始，这里在获得引用的时候开始
+    for i in 0..100 {           
+        println!("{}", z);      // (2) 'a
+        x = Box::new(1);        // (3)，其实到这第一个生命周期就结束了，因为 x 重新赋值了
+        /*
+            如果最后这句注释掉，上边就会报错，
+            x 一直处于被借用的状态，这时对它赋值就不行了
+            所以这个例子生命周期是有间歇性的失效
+            然后又有重启的操作，这就是所谓的 `漏洞`
+         */
+        // z = &x;                 // (4) 'a，即重启了新的生命周期，所以后续循环是 Ok 的
+    }
+    println!("{}", z);
+}
+```
+
+
+* 借用检查器是保守的：
+  * 如果不确定某个借用是合法的，借用检查器就会拒绝这个借用
+* 借用检查器有时需要帮助来理解某个借用为什么是合法的
+  * 这就是 `Unsafe Rust` 存在的部分原因
+
+
+## 泛型生命周期
+* 有时我们需要再自己的类型里存储引用
+  * 这些引用都是有生命周期的，以便借用检查器检查其合法性
+  * 例如：在该类型方法中返回引用，并且存活时间比 `self` 还要长 
+* Rust 允许你基于一个或多个生命周期将类型的定义泛型化
+
+### 两点提醒
+1. 如果类型实现了 `Drop`，那么丢弃这个类型时，就会被记作是使用了这个类型所泛型的生命周期或类型
+  * 即这个类型的实例要被 `drop` 时，在 `drop` 之前，借用检查器会检查看是否仍然能合法的去使用你类型的泛型生命周期，因为 `drop 方法` 中的代码可能会使用到这些引用
+* 如果你的类型没有实现 `Drop`，那么丢弃类型的时候就不会当做使用了生命周期，可以忽略类型里的引用
+
+2. 类型是可以泛型多个生命周期的，但这么做通常会不必要的让类型签名更复杂
+  * 只有类型包含多个引用时，你才应该使用多个生命周期参数
+  * 而且这个类型方法返回的引用也应该只绑定到其中一个引用的生命周期中
+  * 例子：
+  
+```rust
+// 下面代码使用两个生命周期 's, 'p，代码没有问题
+use std::path::Iter;
+
+struct StrSplit<'s, 'p> {
+    delimiiter: &'p str,   // 分隔符
+    document: &'s str,     // 文档
+}
+
+// 实现 Iterator trait 
+impl<'s, 'p> Iterator for StrSplit<'s, 'p> {
+    type Item = &'s str;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        todo!()
+    }
+}
+
+fn str_before(s: &str, c: char) -> Option<&str> {
+    StrSplit {
+        document: s,
+        delimiiter: &c.to_string(),
+    }
+    .next()
+}
+
+
+// 下面代码改为使用一个生命周期 's 代码有问题
+// 因为 str_before 函数内 &c.to_string() 是在函数内创建的所以报错
+// 错误为无法引用值到临时的变量，因为一个生命周期，导致它这里的生命周期最短
+
+struct StrSplit<'s> {
+    delimiiter: &'s str,   // 分隔符
+    document: &'s str,     // 文档
+}
+
+// 实现 Iterator trait 
+impl<'s> Iterator for StrSplit<'s> {
+    type Item = &'s str;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        todo!()
+    }
+}
+
+fn str_before(s: &str, c: char) -> Option<&str> {
+    StrSplit {
+        document: s,
+        delimiiter: &c.to_string(),
+    }
+    .next()
+}
+```
+
+## 生命周期的 Variance
+* Variance：即哪些类型是其他类型的 `子类`
+* 什么时候 `子类` 可以替换 `超类`（vice verse）
+* 通常来说：
+  * 如果 A 是 B 的子类，那么 A 至少和 B 一样有用
+    * Rust 例子：
+      * 如果函数接收 `&'a str` 的参数，那么就可以传入 `&'static str` 的参数
+      * 因为 `&'static str` 是 `&'a str` 的子类，因为 `'static` 至少跟任何 `'a` 存活的一样长
+        * 因为 `'static` 是在程序运行的生命周期一直存活的，例如字符串字面值
+
+
+### 三种 Variance
+* 所有的类型都有 Variance
+  * 这个 Variance 就定义了哪些类似的类型可以用在该类型的位置上，或说可以替代该类型
+
+* 三种 Variance
+  1. covariant（协变）：某类型只能用 `子类型` 来替代
+    * 例如：`&'static T` 可替代 `&'a T`（`&'a T` 也是 `T` 的一个协变）
+  2. invariant（不变）：必须提供指定的类型
+    * 例如：`&mut T`，对于 `T` 来说就是 invariant
+  3. contravariant（逆变）：函数对参数的要求越低，参数可发挥的作用越大
+    * 例子：函数对其参数类型的逆变
+    
+```rust
+// let x1: &'static str;       作用更大, 活的更长
+// let x2: &'a      str;       作用小, 活的短
+
+// fn take_func1(&'static str) 对参数要求比较严格，作用更小
+// fn take_func2(&'s str)      对参数要求比较宽松，作用更大
+```
+
+### 多生命周期与 Variance
+
+```rust
+/*
+    s 有两个生命周期
+    'a 是可变的
+    'b 不可变
+*/
+struct MutStr<'a, 'b> {
+    s: &'a mut &'b str,
+}
+
+fn main() {
+    let mut r: &str = "hello";     // &'statiic str => &'a str
+    /*
+        MutStr { s: &mut r } 是创建实例
+        .s 可以修改值，所以它是 'a mut 
+        &mut r 传入后生命周期就结束了，下边才可以 println
+
+        如果只有一个生命周期，就报错了，
+        只有一个生命周期 到 &mut r 其实是缩短了，因为 &mut 是赋值时候发生的
+        也就相当于对 r 缩短了，但是 &'statiic str 可替换为 &'a str
+        但是 &mut 是精确类型，所以这里缩短借用就会失败
+        所以使用一个生命周期就会 Error
+     */
+    *MutStr { s: &mut r }.s = "world";
+    println!("{}", r);   // 是 'b 的生命周期
+}
+```
+
+    
+
 
 
 
