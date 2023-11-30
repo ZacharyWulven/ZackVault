@@ -577,3 +577,99 @@ fn main() {
 
 > `Box 和 Arc` 都是支持存储宽指针的，所以它们都是支持 `T:?Sized`
 {: .prompt-info }
+
+
+# 0x07 Trait Bounds 的编译与分配
+
+## 静态分派（static dispatch）
+
+### 编译 `泛型代码` 或`调用 dyn Trait 上的方法`时会发生什么呢？
+* 当编写关于泛型 `T` 的类型或函数时：
+  * 编译器会针对每个 `T` 的类型，都将类型或函数复制一份
+  * 例如当你构建 `Vec<i32>` 或 `HashMap<String, bool>` 的时候：
+    * 编译器会复制它的泛型类型以及所有的实现块
+      * 例如：`Vec<i32>`，就是对 Vec 做一个完整的复制，所有遇到的 `T` 都换成 `i32`
+    * 就是把每个实例的泛型参数都使用具体类型进行替换
+
+
+> 编译器其实并不会做完整的复制粘贴，它只复制你用到的代码
+{: .prompt-info }
+
+
+```rust
+impl String {
+    pub fn contains(&self, p: impl Pattern) -> bool {
+        p.is_contained_in(self)
+    }
+}
+```
+
+* 针对不同的 `Pattern` 类型，该方法都会复制一遍，Why？
+  * 因为我们需要知道 `is_contained_in` 方法的地址，以便进行调用。CPU 需要知道在哪跳转和继续执行
+  * 对于任何给定的 `Pattern`，编译器知道那个地址是 `Pattern` 类型实现 `Trait` 方法的地址
+  * Note：这里不存在一个可给任意类型用的通用地址
+
+
+* 也就是说需要为每个类型复制一个（方法体），每份都有自己的地址，用来跳转。这就是所谓的静态分派（static dispatch）：
+  * 因为对于方法的任何给定副本，我们`分派到`的地址都是静态的、已知的
+
+* 静态（static）：就是指编译时已知的事务。
+
+
+## 单态化（monomorphizatiion）
+* 单态化：即从一个泛型类型到多个非泛型类型的过程
+* Rust 的 Trait 就有单态化的特点
+* 当编译器开始优化代码时，就好像根本没有泛型
+  * 每个实例都是单独优化的，具有了所有的已知类型
+  * 所以上边代码例子中 `is_contained_in` 方法调用的执行效率就如同 Trait 不存在一样
+  * 编译器对涉及的类型完全掌握，甚至可以将它进行 `inline` 实现
+
+
+### 单态化的代价
+* 所有的实例都需要单独编译，编译时间增加（如果不能优化编译）
+* 每个单态化的函数都会有自己的一段机器码，让程序更大
+* 而且指令在泛型方法的不同实例间是无法共享的，CPU 的指令缓存效率降低，因为它需要持有相同指令的多个不同副本
+
+
+## 动态分派（dynamic dispatch）
+
+* 动态分派：使代码可以调用泛型类型上的 `trait 方法`，而无需知道具体的类型
+
+
+```rust
+impl String {
+    pub fn contains(&self, p: &dyn Pattern) -> bool {
+        p.is_contained_in(&*self)
+    }
+}
+```
+
+* 此时需要调用者提供两个信息：
+  * `Pattern` 地址
+  * `is_contained_in` 地址
+  
+  
+### vtable
+* 实际上，调用者会提供指向一块内存的指针，它叫做虚方法表（virtual method table）或叫 `vtable`
+  * `vtable` 持有上例该类型所有的 trait 方法实现的地址
+    * 其中一个就是 `is_contained_in` 的地址
+* 当代码想调用提供类型的一个 `trait` 方法时，就会从 `vtable` 查询 `is_contained_in` 方法的实现地址，并调用它
+  * 这样就允许我们使用相同的函数体，而不关心调用者想要使用的类型
+
+* 每个 `vtable` 还包含具体类型的布局和对齐信息（总是需要这些的）
+
+
+### 对象安全（Object-Safe）
+* 类型实现了一个 `trait` 和它的 `vtable` 的组合就形成了一个 `trait object`（trait 对象）
+* 大部分 `trait` 可以转为 `trait object`，但不是所有的都可以：
+  * 例如：`Clone trait` 就不行（`因为它的 clone 方法返回 Self`），`Extend trait` 也不行
+    * 这些例子就不是对象安全的
+
+* 对象安全的要求：
+  * `trait` 所有的方法都不能是泛型的，也不可以使用 `Self`
+  * `trait` 不可以拥有静态方法（因为无法知道在哪个实例上调用的方法）
+
+### Self::Sized
+
+
+
