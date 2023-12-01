@@ -454,9 +454,19 @@ fn main() {
 
 ### 内部可变性：可变的借用一个不可变的值
 * 其实本来借用规则导致你无法可变的借用一个不可变的值
+
+
+```rust
+fn main() {
+    let x = 42;
+    let y = &mut x; // Error! 你无法可变的借用一个不可变的值
+}
+```
+
 * 在某些特定情况下某个值对外部是不可变的，但可以在函数内部可以修改其值，除本身这个函数其余函数都不能修改其值，`RefCell<T>` 就是获得内部可变性的方法
 * 但 `RefCell<T>` 并没有完全绕开借用规则，只是借用检查延后到运行时而已
 * 如果违反了借用规则会 panic
+
 
 ### 使用 `RefCell<T>` 在运行时记录借用信息
 * 两个方法（安全接口）
@@ -576,6 +586,11 @@ fn main() {
 //a after = Cons(RefCell { value: 6 }, Cons(RefCell { value: 15 }, Nil))
 //a after = Cons(RefCell { value: 10 }, Cons(RefCell { value: 15 }, Nil))
 ```
+
+> `将 Rc<T> 与 RefCell<T> 结合使用是常见的方法`
+{: .prompt-info }
+
+
 
 ### 其他课实现内部可变性的类型
 * `Cell<T>` 通过复制数据来访问数据
