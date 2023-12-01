@@ -669,7 +669,192 @@ impl String {
   * `trait` 所有的方法都不能是泛型的，也不可以使用 `Self`
   * `trait` 不可以拥有静态方法（因为无法知道在哪个实例上调用的方法）
 
-### Self::Sized
+
+### Self:Sized
+* `Self:Sized` 意味着 `Self` 无法用于 `trait object`（因为它是 !Sized(非 Sized)）
+* 而将 `Self:Sized` 用于某个 `trait`，就相当于要求它永远不使用动态分派
+* 也可以将 `Self:Sized` 用在特定方法上，但这时当 `trait` 通过 `trait object` 访问的时候，该方法就不可用了
+* 当检查 `trait` 是否是对象安全的时候，使用了 `where Self:Sized` 的方法就会被免除
+
+
+### 动态分派优点
+* 编译时间减少
+* 提升 CPU 指令缓存效率
+
+
+### 动态分派缺点
+* 编译器无法对特定类型优化
+  * 只能通过 `vtable` 调用函数
+  
+* 直接调用方法的开销增加
+  * `trait object` 上的每次方法调用都需要查 `vtable`
+  
+
+## 静态分派、动态分派如何选择（一般而言的建议）
+
+### 静态分派
+* 在 `library` 中使用静态分派
+  * 因为无法知道用户的需求
+  * 如果使用动态分派，用户也只能如此了
+  * 如果使用静态分派，用户可自行选择
+  
+### 动态分派
+* 在 `binary` 中使用动态分派
+  * `binary` 是最终代码，而不是库
+  * 动态分派使代码更整洁了（省去了泛型参数）
+  * 以边际性能为代价，代价比较小
+  
+  
+
+# 0x08 泛型 `Trait`
+
+## `Trait` 的泛型方式
+* 两种：
+1. 泛型类型参数：`trait Foo<T>`
+2. 关联类型：`trait Foo { type Bar; }`
+
+### 上边两种的区别
+* 使用关联类型：对于指定类型的 `trait` 只有一种实现
+* 而使用泛型类型参数：会有多个实现
+
+
+> 建议：可以的话尽量使用 `关联类型`
+{: .prompt-info }
+
+## 泛型类型参数 `Trait`
+* 这种形式必须指定所有的泛型类型参数，并重复写这些参数的 `Bound`
+  * 这样维护较难
+    * 如果添加泛型类型参数到某个 `trait`，该 `trait` 的所有用户必须都进行更新代码
+* 针对给定的类型，一个 `trait` 可以存在多重实现
+  * 缺点：对于你想要用的是 `trait` 的哪个实例，编译器决定起来更困难了
+    * 导致有时不得不调用类似这样的函数，这样调用 `FromIterator::<u32>::from_iter` 才可消除因歧义引起的编译错误（这称为消除歧义的函数）
+  * 这也是优点：
+    * `impl PartialEq<BookFormat> for Book`：可以为某个类型实现多个类型，`BookFormat` 就可以是不同的类型
+    * 也可同时实现 `FromIterator<T>` 和 `FromIterator<&T> where T:Clone` 
+    
+
+## 关联类型 `Trait`
+
+```rust
+trait Contains {
+    type A;
+    type B;
+
+    fn contains(&self, _: &Self::A, _: &Self::B) -> bool;
+}
+```
+
+
+* 使用关联类型
+  * 编译器只需要知道实现 `Trait` 的类型
+  * `Bound` 可完全位于 `Trait` 本身，不必重复使用
+  * 未来再添加关联类型也不影响用户的使用
+  * 具体的类型会决定 `Trait` 内关联类型的类型，无需使用消除消除歧义的函数
+
+```rust
+struct Container(i32, i32);
+
+trait Contains {
+    type A;
+    type B;
+
+    fn contains(&self, _: &Self::A, _: &Self::B) -> bool;
+    fn first(&self) -> i32;
+    fn last(&self) -> i32;
+
+}
+
+impl Contains for Container {
+    type A = i32;
+    type B = i32;
+
+    fn contains(&self, num_1: &i32, num_2: &i32) -> bool {
+        (&self.0 == num_1) && (&self.1 == num_2)
+    }
+
+    fn first(&self) -> i32 { self.0 }
+
+    fn last(&self) -> i32 { self.1 }
+}
+```
+
+* 但是：
+  * 不可以对多个 `Target` 类型来实现 `Deref`
+  * 不可以使用多个 `Item` 来实现 `Iterator`
+  
+
+# 0x09 孤儿规则与连贯性/一致性
+
+## 连贯性/一致性属性
+* 定义：对于给定的类型和方法，只会有一个正确的选择，用于该方法对该类型的实现
+* 孤儿原则（orphan rule）：
+  * 只要 `Trait` 或者类型在你本地的 `crate`，那么就可以为该类型实现该 `Trait`
+    * 例如：可以为你的类型实现 `Debug`，可以为 `bool` 实现 `MyTrait`
+    * 但是不能为 `bool` 实现 `Debug`，因为这俩类型都不在你本地 `crate` 中
+* Note：也有其他的注意事项、例外
+
+
+## Blanket Implementation
+* `impl<T> MyTrait for T where T:`
+  * 例如：`impl<T:Display> ToString for T {}`，要求 `T` 实现了 `Display`，然后为 `T` 实现 `ToString trait`
+* 优点是不局限于一个特定的类型，而是应用于更广泛的类型
+
+
+> 只有定义 `trait` 的 `crate` 允许使用 `Blanket Implementation`。而添加 `Blanket Implementation` 到现有 `trait` 属于破坏性变化。
+{: .prompt-info }
+
+
+
+## 基础类型
+* 有些类型太基础了，需要允许任何人在它们上实现 `trait`（即使违法孤儿原则）
+* 这些类型被标记了 `#[fundamental]`，目前包括 `&`、`&mut`、`Box`
+  * 出于孤儿规则的目的，在孤儿规则检查前，它们是会被抹除掉的
+* 而对于基础类型使用 `Blanket Implementation` 也被认为是破坏性变化
+
+
+## Covered Implementation
+* 有时候需要为外部类型实现外部 `trait`
+  * 例如：`impl From<MyType> for Vec<i32>` 为 Vec<i32> 实现 From trait，（为外来类型实现外来 `trait`）
+* 孤儿规则制定了一个狭窄的豁免：
+  * 允许在非常特定的情况下为外来类型实现外来 `trait`
+
+* 形式 `impl<Pi..=Pn>` ForeignTrait<Ti..=Tn> for T0` 只在以下条件被允许：
+  * 至少有一个 `Ti` 是本地的类型
+  * 并且没有 `T` 在第一个这样的 `Ti` 之前（T 是指泛型类型 Pi..=Pn 中的一个）
+  * 而泛型类型参数 `Ps` 允许出现在 `T0..Ti` 中，只要它们被某种中间(intermediate)类型所 `cover`
+* 如果 `T` 作为其他类型（例 `Vec<T>`）的类型参数出现，那就说 `T` 被 `cover` 了
+* 而 `T` 只作为本身，或者位于基础类型后（`&`、`&mut`、`Box`），就不是 `cover` 的 
+
+
+### Ok 的例子
+* `impl<T> From<T> for MyType`
+* `impl<T> From<T> for MyType<T>`
+* `impl<T> From<MyType> for Vec<T>`
+* `impl<T> ForeignTrait<MyType,T> for Vec<T>`
+
+
+### `Not Ok` 的例子
+* `impl<T> ForeignTrait for T`
+* `impl<T> From<T> for T`
+* `impl<T> From<Vec<T>> for T`
+* `impl<T> From<MyType<T>> for T`
+* `impl<T> From<T> for Vec<T>`
+* `impl<T> ForeignTrait<T, MyType> for Vec<T>`
+
+
+### Covered Implementation 是否有破坏性变化？答案是：看情况
+* 如果为现有 `trait` 添加新的实现，并且至少包含一个新的本地类型，该本地类型满足豁免条件，这时就是`非破坏性的变化`
+* 如果为现有 `trait` 添加的实现不满足上述要求，就是破坏性变化
+
+* Note：
+  * `impl<T> ForeignTrait<LocalType, T> for ForeignType`，是合法的
+  * `impl<T> ForeignTrait<T, LocalType> for ForeignType`，是非法的
+
+
+# 关于类型其他知识
+* `Trait Bound` 的各种高级写法
+* `Marker Trait`（标记 trait）, `Marker Type`（标记类型）
+* `Existential Type`（存在类型）
 
 
 
