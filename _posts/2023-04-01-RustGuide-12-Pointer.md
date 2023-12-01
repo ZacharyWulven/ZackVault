@@ -56,16 +56,18 @@ tags: [Rust, Rust Getting Start]
 * 允许你再 `heap` 上存储数据（而不是在 `stack` 上）
 * `stack` 上是指向 `heap` 数据的指针
 * 没有性能开销，没有其他额外功能
-* 因为它实现了 `Deref` 和 `Drop` 这两个 `trait`，所以它是智能指针
+
+> 因为它实现了 `Deref` 和 `Drop` 这两个 `trait`，所以它是智能指针
+{: .prompt-info }
 
 
 ![image](/assets/images/rust/box.png)
 
 
 ### `Box<T>` 常用的场景
-* 在编译时，某类型的大小无法确定，但使用该类型时，上下文却需要知道它确切的大小
-* 或当你有大量数据，想移交所有权，但需要确保在操作时数据不会被复制
-* 在使用某个值时，你只关心它是否实现了特定的 `trait`（trait 类型），而不关心它的具体类型（即面向协议编程时）
+1. 在编译时，某类型的大小无法确定，但使用该类型时，上下文却需要知道它确切的大小
+2. 或当你有大量数据，想移交所有权，但需要确保在操作时数据不会被复制
+3. 在使用某个值时，你只关心它是否实现了特定的 `trait`（trait 类型），而不关心它的具体类型（即面向协议编程时）
 
 
 ### 使用 `Box<T>` 在 heap 上存储数据
@@ -143,14 +145,18 @@ enum List {
 2. 没有其他额外功能
 3. 没有性能开销
 4. 适用与需要 `间接` 存储的场景，例如 `Cons List`
-5. 实现了 `Deref trait` 就允许将 `Box` 的值当成引用来处理
+5. 实现了 `Deref trait` 就允许将 `Box` 的值当成`引用`来处理
 6. 实现了 `Drop trait` 就是当 `Box` 离开作用域时，它指向的 `heap` 上数据以及 `stack` 上的指针数据都会被清理
 
 
 ## Deref Trait
 * `Deref` 就是解引用的意思
 * 实现了 `Deref Trait` 使我们可以自定义解引用运算符 `*` 的行为
-* 通过实现 `Deref Trait`，智能指针可以像常规引用一样来处理，即处理引用的代码可以不加修改的处理这个智能指针
+
+
+> 通过实现 `Deref Trait`，智能指针可以像常规引用一样来处理，`即处理引用的代码可以不加修改的处理这个智能指针`
+{: .prompt-info }
+
 
 
 ### 解引用运算符
@@ -226,6 +232,8 @@ fn main() {
 2. 编译器会对 `Deref` 进行一些列调用，来把它转为所需的参数类型，这个操作在编译时就完成了，没有额外的性能开销
 
 ```rust
+use std::ops::Deref;
+
 fn hello(name: &str) {
     println!("Hello, {}", name);
 }
@@ -298,6 +306,8 @@ fn main() {
 
 ```rust
     let c = CustomSmartPointer { data: String::from("my stuff") };
+    c.drop();   // Error! 不能显式的调用
+    
     drop(c);    // 提前把 c drop 掉，drop 函数在 prelude 里 
     let d = CustomSmartPointer { data: String::from("other stuff") };
     println!("CustomSmartPointer created.");
@@ -380,7 +390,7 @@ fn main() {
 {: .prompt-info }
 
 
-> 小结：`Rc<T>` 引用不可变引用
+> 小结：`Rc<T> 引用是不可变引用`
 {: .prompt-info }
 
 

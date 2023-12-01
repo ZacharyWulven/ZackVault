@@ -818,7 +818,7 @@ impl Contains for Container {
 * 孤儿规则制定了一个狭窄的豁免：
   * 允许在非常特定的情况下为外来类型实现外来 `trait`
 
-* 形式 `impl<Pi..=Pn>` ForeignTrait<Ti..=Tn> for T0` 只在以下条件被允许：
+* 形式 `impl<Pi..=Pn> ForeignTrait<Ti..=Tn> for T0` 只在以下条件被允许：
   * 至少有一个 `Ti` 是本地的类型
   * 并且没有 `T` 在第一个这样的 `Ti` 之前（T 是指泛型类型 Pi..=Pn 中的一个）
   * 而泛型类型参数 `Ps` 允许出现在 `T0..Ti` 中，只要它们被某种中间(intermediate)类型所 `cover`
