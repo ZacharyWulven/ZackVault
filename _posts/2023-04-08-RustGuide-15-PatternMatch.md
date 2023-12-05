@@ -118,7 +118,7 @@ fn foo(x: i32) {
 }
 
 /*
-    参数时一个元组
+    参数是一个元组
     这里通过模式将元组的值提取给 x、y 变量里
     这样在函数内部就可以使用 x、y 了
 */
@@ -204,7 +204,7 @@ fn main() {
 
     match x {
         Some(50) => println!("Got 50"),
-        Some(y) => println!("Matched, y = {:?}", y),
+        Some(y) => println!("Matched, y = {:?}", y),  // 5
         _ => println!("Default case, x = {:?}", x),
     }
 
@@ -469,6 +469,7 @@ fn test_dot() {
 
 ```rust
 fn main() {
+    // case 1
     let num = Some(4);
     match num {
         /*
@@ -480,7 +481,7 @@ fn main() {
         None => (),
     }
 
-
+    // case 2
     let x = Some(5);
     let y = 10;
     match x {
@@ -495,7 +496,7 @@ fn main() {
     println!("at the end: x = {:?}, y = {:?}", x, y);
 
 
-    // 多重模式使用 match 守卫
+    // case 3，多重模式使用 match 守卫
     let m = 4;
     let n = false;
 
