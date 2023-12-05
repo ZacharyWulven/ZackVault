@@ -2,8 +2,8 @@
 layout: post
 title: Python-QuickStart-01
 date: 2023-07-30 16:45:30.000000000 +09:00
-categories: [Python]
-tags: [Python]
+categories: [Python, QuickStart]
+tags: [Python, QuickStart]
 ---
 
 # 1 print 函数

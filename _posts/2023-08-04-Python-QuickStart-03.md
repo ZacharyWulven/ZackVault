@@ -2,8 +2,8 @@
 layout: post
 title: Python-QuickStart-03
 date: 2023-08-04 16:45:30.000000000 +09:00
-categories: [Python]
-tags: [Python]
+categories: [Python, QuickStart]
+tags: [Python, QuickStart]
 ---
 
 

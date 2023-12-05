@@ -10,6 +10,46 @@ tags: [Rust, Rust Getting Start]
 
 ## 面向对象语言的特性
 
+
+## 封装
+
+```rust
+pub struct AveragedCollection {
+    list: Vec<i32>,  // 私有
+    average: f64,    // 私有
+}
+
+impl AveragedCollection {
+    pub fn add(&mut self, value: i32) {
+        self.list.push(value);
+        self.update_average();
+    }
+
+    pub fn remove(&mut self) -> Option<i32> {
+        let result = self.list.pop();
+        match result {
+            Some(value) => {
+                self.update_average();
+                Some(value)
+            },
+            None => None,
+        }
+    }
+
+    pub fn average(&self) -> f64 {
+        self.average
+    }
+    
+    // 私有方法
+    fn update_average(&mut self) {
+        let total: i32 = self.list.iter().sum();
+        self.average = total as f64 / self.list.len() as f64;
+    }
+
+}
+```
+
+
 ### 继承
 * Rust 里没有继承
 * 使用继承的原因：代码复用
@@ -281,7 +321,7 @@ fn main() {
 1. 某些状态之间是相互耦合的，如果新增一个状态与其相关联的状态就需要修改
 2. 需要重复实现一些逻辑代码
 
-### 将状态和行为编码为类型
+### 将状态和行为编码为类型（更 Rust 的方式）
 * 将状态编码为不同的类型
 1. Rust 类型检查系统会通过编译时错误来阻止用户使用无效的状态
 

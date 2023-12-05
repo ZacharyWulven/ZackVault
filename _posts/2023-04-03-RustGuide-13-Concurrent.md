@@ -143,14 +143,15 @@ fn moved() {
 
 ### 创建 Channel
 * 使用 `mpsc::channel` 函数来创建 Channel
-1. mpsc 表示 multiple producer，single consumer（多个生成者，一个消费者，即多个发生端，一个接收端）
+1. mpsc 表示 multiple producer，single consumer（多个生成者，一个消费者，即多个发送端，一个接收端）
 2. 返回一个 tuple，里边的元素分别是发送端、接收端
+
 
 ```rust
 use std::sync::mpsc;
 use std::thread;
 
-fn mpsc() {
+fn main() {
     // tx 是 sender，rx 是 receiver
     let (tx, rx) = mpsc::channel();
 
@@ -183,14 +184,14 @@ fn mpsc() {
 * try_recv 方法：它不会阻塞当前线程，会立即返回 `Result<T,E>`
 1. 这时如果有数据到达就返回 Ok，里边包裹着数据
 2. 否则返回一个错误
-* 通常会使用循环调用来检查 try_recv 的结果，一旦有消息就进行处理，如果没来也可做其他操作
+* 通常会使用循环调用来检查 `try_recv` 的结果，一旦有消息就进行处理，如果没来也可做其他操作
 
 ### Channel 和所有权转移
 * 所有权在消息传递中非常重要，能帮你编写安全、并发的代码
 
 
 ```rust
-fn mpsc() {
+fn main() {
     // tx 是 sender，rx 是 receiver
     let (tx, rx) = mpsc::channel();
 
@@ -199,7 +200,7 @@ fn mpsc() {
          
         tx.send(val).unwrap(); // val 在这里发生了 move
         
-        // 这里报错因为 val 已经 move 了
+        // Error! 这里报错因为 val 已经 move 了
         println!("val is {}", val);
     });
 
@@ -317,10 +318,10 @@ fn clone_tx() {
 
 ### `Mutex<T>` 的 API
 * 通过 `Mutex::new(数据)` 来创建 `Mutex<T>`，`Mutex<T>` 也是一个智能指针
-* 访问数据前，通过 lock 方法来获取锁
+* 访问数据前，通过 `lock 方法`来获取锁
 1. lock 方法会阻塞当前线程
 2. lock 方法也可能会失败
-3. 返回的是 MutexGuard（智能指针，实现了 Deref 和 Drop）
+3. 返回的是 MutexGuard（也是一个智能指针，实现了 Deref 和 Drop）
 
 ```rust
 use std::sync::Mutex;
@@ -360,7 +361,7 @@ fn main() {
     let mut handles = vec![];
 
     for _ in 0..10 {
-        // 这里 move 报错，因为第一次开线程已经获取了 counter 的所有权
+        // Error 这里 move 报错，因为第一次开线程已经获取了 counter 的所有权
         let handle = thread::spawn(move || {
             let mut num = counter.lock().unwrap();
             *num += 1;
@@ -375,7 +376,8 @@ fn main() {
 }
 ```
 
-> 上边代码由于第一次开线程已经获取了 counter 的所有权，所以保持，下边我们通过`多线程的多重所有权` 解决
+
+> 上边代码由于前一次循环开线程已经获取了 counter 的所有权，所以报错，下边我们通过`多线程的多重所有权` 解决
 {: .prompt-info }
 
 
@@ -387,7 +389,7 @@ fn main() {
 
 
 ### 使用 `Arc<T>` 来进行原子引用计数
-* `Arc<T>` 和 `Rc<T>` 类似，它可以用于并发的场景
+* `Arc<T>` 和 `Rc<T>` 类似，但是它可以用于并发的场景
 1. `A` 即 `atomic`，原子性
 2. 所以 `Arc<T>` 就是原子性的 `Rc<T>`
 
@@ -436,7 +438,7 @@ fn main() {
 ### Send 和 Sync trait
 * Rust 语言的并发特性较少，目前将的并发特性都来自标准库（而不是语言本身）
 * 无需局限于标准库的并发，可以自己实现并发
-* 但在 Rust 语言中有两个并发概念，相关的是两个 `trait`，他们是标签 `trait` 因为没有定义任何方法
+* 但在 Rust 语言中有两个并发概念，相关的是两个 `trait`，他们是`标签 trait`，因为没有定义任何方法
 1. `std::marker::Sync`
 2. `std::marker::Send` 
 
