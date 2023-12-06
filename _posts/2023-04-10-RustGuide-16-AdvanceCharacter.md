@@ -579,7 +579,7 @@ struct Point {
     y: i32,
 }
 
-// 因为 OutlinePrint 有模式实现，所以这里我们只实现 fmt::Display 就可以了
+// 因为 OutlinePrint 有默认实现，所以这里我们只实现 fmt::Display 就可以了
 impl fmt::Display for Point  {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "({}, {})", self.x, self.y)
@@ -843,7 +843,7 @@ fn test_fn() {
 #### `fn` 函数指针
 1. 它是一个类型，而不是一个 `Trait`
 2. 我们可以直接指定 `fn` 为参数类型，而不用声明一个以 `Fn Trait` 为约束的泛型参数
-3. 函数指针实现了 3 中`闭包 Trait（Fn、FnMut、FnOnce）`
+3. 函数指针实现了 3 中`闭包 Trait（Fn、FnMut、FnOnce）` 的全部
 * 所以总是可以把函数指针用作参数传递给一个接收闭包的函数
 * 也正是这个原因，我们倾向于搭配闭包 `trait` 的泛型来编写函数：这样这个函数就可以同时接收闭包和普通函数作为它的参数了
 
@@ -908,7 +908,7 @@ fn main() {
 ```
 
 ### 返回闭包
-* 闭包使用 `Trait` 进行表达，我们无法在函数中直接返回一个闭包，但可以将一个实现了该 `Trait 的具体类型作为返回值
+* 闭包使用 `Trait` 进行表达，我们无法在函数中直接返回一个闭包，但可以将一个实现了该 `Trait` 的具体类型作为返回值
 
 ```rust
 // 这样想返回一个闭包时不可以的 
