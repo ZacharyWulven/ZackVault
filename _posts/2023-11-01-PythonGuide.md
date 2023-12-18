@@ -432,6 +432,233 @@ while True:
 
 
 ## 使用 Plotly 模拟骰子
+* 使用 Plotly Express 创建图形，它是 Plotly 的一个子集
+* 它能直接显示在浏览器中
+
+### 安装 Plotly
+* Plotly Express 依赖于 pandas（一个用于高效地处理数据的库）
+
+```shell
+$ python3 -m pip install plotly
+$ python3 -m pip install pandas
+```
+
+### 同时掷两个骰子
+
+```python
+# die.py
+
+from random import randint
+
+class Die:
+    """表示一个骰子的类"""
+
+    def __init__(self, num_sides=6):
+        """骰子默认为 6 面"""
+        self.num_sides = num_sides
+
+    def roll(self):
+        """返回一个介于 1 和 num_sides 之间的随机数"""
+        return randint(1, self.num_sides)
+    
 
 
+# dice.py
+import plotly.express as px
+from die import Die
 
+# 创建两个骰子
+die_1 = Die()
+die_2 = Die()
+
+results = []
+
+for roll_num in range(1000):
+    result = die_1.roll() + die_2.roll()
+    results.append(result)
+
+print(results)
+
+# 分析结果
+frequencies = []
+poss_results = range(2, die_1.num_sides + die_2.num_sides + 1)
+print(poss_results)
+for value in poss_results:
+    frequency = results.count(value)
+    frequencies.append(frequency)
+print(frequencies)
+
+# 对结果进行可视化
+title = "Results of Rolling Two D6 Dice 1,000 Times"
+labels = {'x': 'Result', 'y': 'Frequency of Result'}
+
+# bar 创建一个直方图
+fig = px.bar(x=poss_results, y=frequencies, title=title, labels=labels)
+
+# 指定 x 轴刻度标记的间距
+fig.update_layout(xaxis_dtick=1)
+
+# 直接展示在浏览器中
+# fig.show()
+
+# 保存 html 到当前目录
+fig.write_html('dice_visual.html')
+```
+
+![image](/assets/images/python/guide/dice.png)
+
+
+# 3 下载数据
+
+* 本章展示两种常见格式（CSV和 JSON）存储的数据并将其可视化
+
+
+## CSV 格式
+* 最简单的方式是将数据组织为一些列`以逗号分隔的值`并写入文件
+
+```python
+from pathlib import Path
+import csv
+import matplotlib.pyplot as plt
+
+# 处理时间
+from datetime import datetime
+
+path = Path('weather_data/sitka_weather_07-2021_simple.csv')
+print(path)
+lines = path.read_text().splitlines()
+reader = csv.reader(lines)  # 将包含 CSV 文件中各行的列表传递给它
+header_row = next(reader)   # next 函数返回下一行
+print(header_row)           # 得到第一行
+
+for index, column_header in enumerate(header_row):
+    print(index, column_header)
+
+
+# 提取最高温度和日期、最低温度
+highs, dates, lows = [], [], []
+
+for row in reader:
+    print(f'row is {row}')
+    # row is ['USW00025333', 'SITKA AIRPORT, AK US', '2018-07-27', '0.00', '', '68', '58']
+
+    current_date = datetime.strptime(row[2], '%Y-%m-%d')
+    dates.append(current_date)
+
+    try:
+
+        high = int(row[5])
+        low = int(row[6])
+    except ValueError:
+        print(f'Missing data for {current_date}')
+    else:
+        highs.append(high)
+        lows.append(low)
+
+print(highs)
+
+
+# 绘制温度图
+plt.style.use('seaborn-v0_8')
+fig, ax = plt.subplots()
+
+ax.plot(dates, highs, color='red', alpha=0.5)
+ax.plot(dates, lows, color='blue', alpha=0.5)
+# fill_between 接收一组 x 坐标值和两组 y 坐标值，并填充两组 y 坐标值之间的空间
+ax.fill_between(dates, highs, lows, facecolor='blue', alpha=0.1)
+
+
+# 设置绘图的格式
+ax.set_title("Daily High and Low Temperatures, 2021", fontsize=24)
+ax.set_xlabel('', fontsize=16)
+fig.autofmt_xdate() # 绘制倾斜的日期标签
+
+ax.set_ylabel("Temperature (F)", fontsize=16)
+ax.tick_params(labelsize=16)
+
+plt.show()
+```
+
+![image](/assets/images/python/guide/csv.png)
+
+
+## 制作散点图：GeoJSON 格式
+
+
+```python
+from pathlib import Path
+import json
+
+import plotly.express as px
+import pandas as pd
+
+# 将数据作为字符串读取并转换为 Python 对象
+path = Path('eq_data/eq_data_7_day_m1.json')
+contents = path.read_text()
+all_eq_data = json.loads(contents)
+
+# 将数据文件转换为更易读的版本
+path = Path('eq_data/readable_eq_data.geojson')
+# indent 指定数据结构中嵌套元素的缩进量
+readable_contents = json.dumps(all_eq_data, indent=4)
+path.write_text(readable_contents)
+
+
+all_eq_dicts = all_eq_data['features']
+# print(all_eq_dicts)
+print(len(all_eq_dicts))
+
+# 提取震级、位置信息
+mags, titles, lons, lats = [], [], [], []
+for eq_dict in all_eq_dicts:
+    mag = eq_dict['properties']['mag']
+    title = eq_dict['properties']['title']
+    lon = eq_dict['geometry']['coordinates'][0]
+    lat = eq_dict['geometry']['coordinates'][1]
+    mags.append(mag)
+    titles.append(title)
+    lons.append(lon)
+    lats.append(lat)
+
+print(mags[:10])
+print(titles[:3])
+print(lons[:5])
+print(lats[:5])
+
+data = pd.DataFrame(
+    data=zip(lons, lats, titles, mags), columns=['经度', '纬度', '位置', '震级']
+)
+data.head()
+fig = px.scatter(
+    data,
+    x='经度',
+    y='纬度',
+    range_x=[-200, 200],   # x 轴范围
+    range_y=[-90, 90],     # y 轴范围
+    width=800,             # 设置散点图显示宽度 800 像素
+    height=800,
+    title='全球地震散点图',
+    size='震级',            # 指定散点图中每个标记的尺寸
+    size_max=10,           # 最大显示尺寸缩小到 10 像素
+    color='震级',
+    hover_name='位置',
+)
+
+
+# fig = px.scatter(
+#     x=lons,
+#     y=lats,
+#     labels={'x': '经度', 'y': '纬度'},
+#     range_x=[-200, 200],   # x 轴范围
+#     range_y=[-90, 90],     # y 轴范围
+#     width=800,             # 设置散点图显示宽度 800 像素
+#     height=800,
+#     title='全球地震散点图',
+# )
+
+
+# fig.write_html('global_earthquuakes.html')
+fig.show()
+```
+
+![image](/assets/images/python/guide/geojson.png)
