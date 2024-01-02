@@ -327,3 +327,87 @@ async fn main() {
     let _ = tokio::join!(h1, h2);
 }
 ```
+
+
+# Tokio 组件的组成
+
+![image](/assets/images/rust/tokio.png)
+
+* `Tokio` 运行时需要理解操作系统（内核）的方法（epoll）来开启 `I/O 操作`（例如读取网络数据，读写文件等）
+* `Tokio` 运行时会注册异步的处理程序，以便在事件发生时作为 `I/O 操作`的一部分进行调用。而在 `Tokio` 运行时里，从内核监听这些事件并与 `Tokio` 其他部分通信的组件就是`反应器（reactor）`
+* `Tokio` 执行器，他会把一个 `Future` 当其可取得更多进展时，通过调用 `Future` 的 `poll()` 方法来驱动其完成
+
+* 那么 `Future` 使如何告诉执行器他们准备好取得进展了呢 ？
+    * 就是 `Future` 调用 `Waker` 组件上的 `wake()` 方法
+    * `Waker` 组件就会通知执行器，然后把 `Future` 放回队列，并再次调用 `poll()` 方法，直到 `Future` 完成
+    
+
+## Tokio 组件的简化工作流程
+1. `Main` 函数在 `Tokio` 运行时上生成任务 1
+2. 任务 1 有一个 `Future`，会从一个大文件中读取内容
+3. 从文件读取内容请求交到系统内核的文件子系统
+4. 与此同时，任务 2 也被 `Tokio` 运行时安排进行处理
+5. 当任务 1 的文件操作结束时，文件子系统会触发一个系统中断，他会被翻译成 `Tokio` 响应器可识别的一个事件
+6. `Tokio` 响应器会通知任务 1，文件操作的数据已经准备好
+7. 任务 1 通知它注册的 Waker 组件，说明它可以产生一个值了
+8. Waker 组件通知 Tokio 执行器来调用任务 1 关联的 poll() 方法
+9. `Tokio` 执行器安排任务 1 进行处理，并调用 `poll()` 方法
+10. 任务 1 产生一个值
+
+
+```rust
+use std::future::Future;
+use std::pin::Pin;
+use std::task::{Context, Poll};
+use std::thread::sleep;
+use std::time::Duration;
+
+struct ReadFileFuture {}
+
+impl Future for ReadFileFuture {
+    type Output = String;
+
+    fn poll(self: std::pin::Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> std::task::Poll<Self::Output> {
+        println!("Tokio! Stop polling me");
+        /*
+            通知 tokio 运行时，异步任务已经准备好了，
+            可以被 poll 了
+
+            这里因为下边返回的还是 Poll::Pending，
+            所以这个方法会被不断地执行
+        */
+        cx.waker().wake_by_ref();
+        // Poll::Pending
+        Poll::Ready(String::from("Hello, from file 1!!!")); // 这里返回 Poll::Ready，这个 Future 可结束了
+    }
+}
+
+async fn read_from_file2() -> String {
+    sleep(Duration::new(2, 0));
+    // println!("{:?}", "Processing file 2");
+    String::from("Hi, there from file 2")
+}
+
+#[tokio::main]
+async fn main() {
+    println!("Hello before reading file!");
+
+    // 生成异步任务
+    let h1 = tokio::spawn(async {
+        let future1 = ReadFileFuture {};
+        let val = future1.await;
+        println!("{:?}", val);
+    });
+
+    let h2 = tokio::spawn(async {
+        let file2_contents = read_from_file2().await;
+        println!("{:?}", file2_contents);
+    });
+
+    let _ = tokio::join!(h1, h2);
+}
+```
+
+* 上边 `ReadFileFuture` 返回 `Poll::Ready` 导致能取得一个值，最终结束
+
+
