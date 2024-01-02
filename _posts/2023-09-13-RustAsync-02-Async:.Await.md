@@ -60,12 +60,12 @@ use async_std::task;
 /// 返回的 Future 是包含所需相关信息的：包括参数、本地变量空间
 /// 
 /// Future 的具体类型是由编译器基于函数体和参数自动生成的
-/// 1. 改类型没有名称
+/// 1. 该类型没有名称
 /// 2. 它实现了 Future<Output=R>，这个函数 R 就是 Result<String>
 /// 
 /// 
 /// 第一次对 cheapo_request 进行 poll 时：
-/// 从函数体顶部开始执行，直到第一个 await（针对 TcpStream::connect 返回 Future），
+/// 从函数体顶部开始执行，直到第一个 await（针对 TcpStream::connect 返回 Future 进行 await），
 /// 这个 await 就会对 TcpStream::connect 的 Future 进行 poll
 /// 1. 如果没有完成就返回 Pending
 /// 2. 只要没有完成， cheapo_request 函数就没法继续
@@ -75,7 +75,7 @@ use async_std::task;
 /// 
 /// await 能干什么？：
 /// 1. 获得 Future 的所有权，并对其进行 poll
-/// 2. 对 Future 进行 poll 时，如果 Future 返回 Ready，其最终值就是 await 表达式，这时就继续执行后续代码，
+/// 2. 对 Future 进行 poll 时，如果 Future 返回 Ready，其最终值就是 await 表达式的值，这时就继续执行后续代码，
 /// 否则就返回 Pending 给调用者
 /// 
 /// 
@@ -94,7 +94,7 @@ use async_std::task;
 /// 2. 以及所需的本地状态（变量、参数、临时变量等）
 /// 
 /// 
-/// 这种途中能暂停执行，然后恢复执行的能力是 async 所独有的，由于 await 表达式依赖于“可恢复执行”这个特性，
+/// 这种途中能暂停执行，然后恢复执行的能力是 async 函数所独有的，由于 await 表达式依赖于“可恢复执行”这个特性，
 /// 所以 await 只能用在 async 中
 /// 而暂停执行时线程在做什么？它不是在干等着，而是在做其他的工作。
 ///
@@ -233,7 +233,7 @@ fn move_block() -> impl Future<Output = ()> {
 
 # 4 Pinning
 
-## 什么事 `Pin`
+## 什么是 `Pin`
 * `Pin` 是与 `Unpin` 标记一起工作的 
 * `Pin` 会保证实现了 `!Unpin` 的对象永远不会被移动
 
