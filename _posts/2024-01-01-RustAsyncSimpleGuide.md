@@ -411,3 +411,75 @@ async fn main() {
 * 上边 `ReadFileFuture` 返回 `Poll::Ready` 导致能取得一个值，最终结束
 
 
+# 最后例子
+## 创建一个自定义 Future，它是一个定时器，具有以下功能：
+* 可设定超时时间
+* 当它被异步运行时的执行器 poll 的时候，它会检查
+  1. 如果当前时间大于等于超时时间，则返回 Poll::Ready，里面带着一个 String 值
+  2. 如果当前时间小于超时时间，则它会睡觉直至超时为止。然后它会触发 Waker 上的 wake() 方法，这就会通知异步运行时的执行器来安排再次执行该任务
+
+
+```rust
+use std::future::{Future, self};
+use std::pin::Pin;
+use std::task::{Context, Poll};
+use std::thread::sleep;
+use std::time::{Duration, Instant};
+
+struct AsyncTimer {
+    expiration_time: Instant, // 超时时间, Instant 定义于标准库
+}
+
+impl Future for AsyncTimer {
+    type Output = String;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        if Instant::now() >= self.expiration_time {
+            println!("Hello, it's time for Future 1");
+            Poll::Ready(String::from("Future 1 has completed"))
+        } else {
+            println!("Hello, it's not yet time for Future 1. Going to sleep");
+            let waker = cx.waker().clone();
+            let expiration_time = self.expiration_time;
+            std::thread::spawn(move || {
+                let current_time = Instant::now();
+                if current_time < expiration_time {
+                    std::thread::sleep(expiration_time - current_time);
+                }
+                waker.wake();
+            });
+            Poll::Pending
+        }
+    }
+}
+
+async fn read_from_file2() -> String {
+    sleep(Duration::new(2, 0));
+    String::from("Future 2 has completed")
+}
+
+#[tokio::main]
+async fn main() {
+    let h1 = tokio::spawn(async {
+        let future1 = AsyncTimer {
+            expiration_time: Instant::now() + Duration::from_millis(3000),
+        };
+        println!("{:?}", future1.await);
+    });
+
+    let h2 = tokio::spawn(async {
+        let file2_contents = read_from_file2().await;
+        println!("{:?}", file2_contents);
+    });
+
+    let _ = tokio::join!(h1, h2);
+}
+
+// Hello, it's not yet time for Future 1. Going to sleep
+// "Future 2 has completed"
+// Hello, it's time for Future 1
+// "Future 1 has completed"
+```
+
+
+
