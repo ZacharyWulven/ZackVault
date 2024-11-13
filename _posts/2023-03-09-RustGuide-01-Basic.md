@@ -205,7 +205,7 @@ $ cargo update
 ```
 
 ### 添加依赖库 rand
-* 在 cargo.toml 中添加 rand 库
+* 方法一：直接在 cargo.toml 中添加 rand 库
 
 ```
 [dependencies]
@@ -214,6 +214,16 @@ rand = "0.8.5"  // 指定版本号
 ```
 
 之后 vscode 会下载依赖库，下载好后可执行 `cargo build`
+
+* 方法二：命令行
+
+```
+// 使用 rand 最新版本
+$ cargo add rand
+
+// 直到 rand 版本为 0.8.5
+$ cargo add rand@0.8.5
+```
 
 
 * 生成随机数

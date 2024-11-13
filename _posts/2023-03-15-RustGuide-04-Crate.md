@@ -22,8 +22,8 @@ tags: [Rust, Rust Getting Start]
 ## Package 和 Crate
 
 ### Crate 类型
-1. binary，二进制的
-2. library，库
+1. binary，二进制的，可执行的，例如：`main 函数` 就是 binary crate。一个 Package 可包含多个
+2. library 库，一个 Package 可包含 0-1 个 library crate
 
 ### Crate Root
 * 它是源代码文件
