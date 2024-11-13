@@ -194,15 +194,8 @@ $ cargo fmt
 ## 随机数
 [随机数](https://crates.io/crates/rand)
 
-一个 crate 就是一个库
+* 一个 crate 就是一个库
 
-
-### cargo update
-* 会忽略 cargo.lock 中的版本，来找到 cargo.toml 里符合的版本
-
-```
-$ cargo update
-```
 
 ### 添加依赖库 rand
 * 方法一：直接在 cargo.toml 中添加 rand 库
@@ -215,7 +208,7 @@ rand = "0.8.5"  // 指定版本号
 
 之后 vscode 会下载依赖库，下载好后可执行 `cargo build`
 
-* 方法二：命令行
+* 方法二：命令行 `cargo add`（推荐）
 
 ```
 // 使用 rand 最新版本
@@ -225,6 +218,12 @@ $ cargo add rand
 $ cargo add rand@0.8.5
 ```
 
+### 更新依赖库，使用命令 `cargo update`
+* 会忽略 cargo.lock 中的版本，来找到 cargo.toml 里符合的版本
+
+```
+$ cargo update
+```
 
 * 生成随机数
 
