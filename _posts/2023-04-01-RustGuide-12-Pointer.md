@@ -147,6 +147,11 @@ enum List {
 4. 适用与需要 `间接` 存储的场景，例如 `Cons List`
 5. 实现了 `Deref trait` 就允许将 `Box` 的值当成`引用`来处理
 6. 实现了 `Drop trait` 就是当 `Box` 离开作用域时，它指向的 `heap` 上数据以及 `stack` 上的指针数据都会被清理
+7. Rust 会自动释放 Box 的堆（heap）内存
+
+
+> Box 内存释放原则（几乎正确）：如果一个变量绑定到一个 `Box`, 当 Rust 释放变量的 `frame` 时，Rust 也会释放 `Box` 的堆（heap）内存
+{: .prompt-info }
 
 
 ## Deref Trait
