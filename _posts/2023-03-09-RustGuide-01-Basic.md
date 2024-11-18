@@ -342,6 +342,13 @@ fn main() {
 
 # 基础
 
+## 打印
+
+```rust
+    let x = 10;
+    println!("x is {x}");
+```
+
 ## 变量与可变性
 * 声明变量使用 `let` 关键字
 * 默认情况下，变量是不可变的（immutable）
@@ -560,6 +567,14 @@ fn plus_five(x: i32) -> i32 {
 let cond = true;
 let number = if cond { 4 } else { 2 };
 println!("number is {}", number);
+
+// 等于这样
+let number;
+if cond {
+    number = 4;
+} else {
+    number = 2;
+}
 ```
 
 ## 循环
@@ -582,6 +597,37 @@ let result = loop {
 
 println!("result is {}", result);
 ```
+
+* 带标签的 loop
+
+
+```rust
+fn main() {
+    println!("Hello, world!");
+
+    let mut count = 0;
+    'counting_up: loop {
+        println!("count = {}", count);
+        let mut remaining = 10;
+
+        loop {
+            println!("remaining = {}", remaining);
+            if remaining == 9 {
+                break;
+            }
+            if count == 2 {
+                break 'counting_up;
+            }
+            remaining -= 1;
+        }
+
+        count += 1;
+    }
+    println!("End count = {}", count);
+
+}
+```
+
 
 ## while 循环
 * 每次执行循环体之前都判断一次条件
