@@ -7,9 +7,10 @@ tags: [Rust, Rust Getting Start]
 ---
 
 # 所有权（Rust Core）
-* 所有权时 Rust 最独特的特性，它让 Rust 无需 GC 就可以保证内存安全
-* 是确保 Rust 程序安全的一种机制
- - 安全：即程序中没有未定义的行为
+* 所有权是 Rust 最独特的特性，它让 Rust 无需 GC 就可以保证内存安全
+* 所有权是确保 Rust 程序安全的一种机制
+    - 安全：即程序中没有未定义的行为
+    - 未定义的行为：当执行一段代码时，结果不可预测且未被编程语言指定的情况
 * Rust 的一个基础目标：是确保你的程序永远不会有未定义的行为
 * Rust 的一个次要目标：是在编译时而不是运行时防止未定义的行为
 
@@ -40,6 +41,17 @@ tags: [Rust, Rust Getting Start]
 这个过程就叫在 heap 上进行分配
 
 
+![image](/assets/images/rust/heap.png)
+
+
+> `a` 最开始有 Box 的所有权；将 `a` 赋值给 `b` 后，发生了 `move`, `a` 就失效了, `b` 获得了 Box 的所有权
+{: .prompt-info }
+
+
+## 移动堆（heap）数据原则：
+* 如果变量 `x` 将堆（heap）数据的所有权移动给另一个变量 `y`，那么在移动后，`x` 就不能再使用了。
+* 避免数据移动的一种方法是使用 `.clone()` 方法进行克隆
+
 
 ## Stack VS Heap
 
@@ -62,6 +74,18 @@ tags: [Rust, Rust Getting Start]
 
 ## 函数调用
 * 当调用函数时，被传入到函数（也包括指向 heap 的指针）。函数本地变量被压入到 stack，当函数结束这些变量会从 stack 弹出。
+* Rust 不允许手动管理内存
+* `Stack Frame` 由 Rust 自动管理：当调用一个函数时，Rust 为被调用的函数分配一个 `Stack Frame`。当调用结束时，Rust 释放该 `Stack Frame`。
+
+
+## Box 的所有者来管理内存释放
+* Rust 会自动释放 Box 的堆（heap）内存
+
+
+> `Box` 内存释放原则（完全正确）：如果一个变量`拥有`一个 `Box`，当 Rust 释放变量的 `frame` 时，Rust 也会释放 `Box` 的堆（heap）内存
+{: .prompt-info }
+
+![image](/assets/images/rust/box_heap.png)
 
 
 ## 所有权能解决的问题
