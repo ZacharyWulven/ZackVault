@@ -287,7 +287,7 @@ fn takes_and_gives_back(a_string: String) -> String {
 * 以 String 为例，参数类型是 &String 而不是 String
 1. & 符号就表示引用，允许你引用某些值而不取得其所有权
 2. s 就是 s1 引用，s 就是一个指向 s1 的指针
-3. 引用使用 `&`，解引用使用 `*`
+3. 引用使用 `&`，解引用使用 `*`（以便可以访问数据）
 
 ![image](/assets/images/rust/reference.png)
 
@@ -335,6 +335,37 @@ fn get_length(str: &mut String) -> usize {
     str.len()
 }
 ```
+
+### 引用时没有`所有权`的指针
+
+
+```rust
+fn main() {
+    let m1 = String::from("hello");
+    let m2 = String::from("world");
+    println!("m1:{}", m1);
+    println!("m1 的地址:{:p}", &m1);
+    greet(&m1, &m2);
+    let s = format!("{} {}", m1, m2);
+}
+
+fn greet(g1: &String, g2: &String) {
+    println!("g1:{}, g2:{}!", g1, g2);
+    let address_in_g1 = g1 as *const String;
+    println!("g1 value:{g1}");
+    println!("g1 存的内容:{:p}", address_in_g1);
+    println!("g1的地址:{:p}", &g1);
+}
+
+//m1:hello
+//m1 的地址:0x16db9aa00
+//g1:hello, g2:world!
+//g1 value:hello
+//g1 存的内容:0x16db9aa00
+//g1的地址:0x16db9a780
+
+```
+
 
 ### 可变引用
 
