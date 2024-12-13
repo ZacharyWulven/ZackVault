@@ -569,6 +569,27 @@ fn main() {
 ### 可以变引用可以临时降级为只读引用
 
 
+![image](/assets/images/rust/down.png)
+
+* `*num` 就是 `v[2]`，而 `&*num` 就相当于引用的是 `&v[2]`，`num2` 是不可变的引用
+* 上图第三行代码走完时，`*num` 就被降级为只读引用了
+
+
+```rust
+fn main() {
+    let mut v: Vec<i32> = vec![1, 2, 3];
+    let num: &mut i32 = &mut v[2];
+    let num2 = &*num;
+    println!("*num is {}, *num2 is {}", *num, *num2);
+}
+```
+
+### 权限在引用生命周期结束时被返回
+
+
+
+
+
 
 ## 切片
 Rust 提供了一种不持有所有权的数据类型：切片（slice）
