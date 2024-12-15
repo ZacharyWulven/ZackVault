@@ -586,9 +586,42 @@ fn main() {
 
 ### 权限在引用生命周期结束时被返回
 
+![image](/assets/images/rust/life.png)
 
 
+![image](/assets/images/rust/if_else.png)
 
+
+### 数据必须在其所有的引用存在的期间存活
+
+
+### 流动权限 F（flow）：函数里的表达式，在表达式使用输入引用或返回输出引用时都需要`流动权限 F`
+
+![image](/assets/images/rust/flow.png)
+
+* 上图函数中，第一行为`表达式使用输入引用`,第二行为`表达式返回输出引用`,它们需要流动权限
+* `F` 权限在函数体内不会发生变化
+
+
+> 如果一个引用被允许在特定的表达式中使用（即流动），那么它就具有 F 权限
+{: .prompt-info }
+
+
+![image](/assets/images/rust/flow1.png)
+
+* 上图 `main` 中可能 s 引用了 `default` 下边将 `default` 进行 `drop` 有可能有问题
+
+
+> Rust 不管函数如何实现，Rust 只看函数签名。上图会报错，需要引用标识生命周期 
+{: .prompt-info }
+
+
+#### 另一个例子
+
+![image](/assets/images/rust/flow1.png)
+
+
+* 最后返回值不具有 `F 权限`，因为这个函数走完，`S` 就被释放了
 
 
 ## 切片
