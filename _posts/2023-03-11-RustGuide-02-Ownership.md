@@ -624,6 +624,45 @@ fn main() {
 * 最后返回值不具有 `F 权限`，因为这个函数走完，`S` 就被释放了
 
 
+## 修复所有权常见的错误
+
+1 Fixing an Unsafe Program: Returning a Reference to the Stack
+
+```rust
+fn return_a_string() -> &String {
+    let s = String::from("hello");
+    &s
+}
+
+// 方案一：
+fn return_a_string() -> String {
+    let s = String::from("hello");
+    s
+}
+
+// 方案二：&'static 会随程序运行一直存在，活的最长，除非程序嘎了
+fn return_a_string() -> &'static str {
+    "Hello, world!"
+}
+
+// 方案三：可对引用计数的指针
+use std::rc::Rc;
+fn return_a_string() -> Rc<String> {
+    let s = Rc::new(String::from("hello"));
+    Rc::clone(&s)
+}
+
+// 方案四：不推荐
+fn return_a_string(output: &mut String) {
+    // 将整个字符串替换为 "Hello World"
+    output.replace_range(.., "Hello World");
+}
+```
+
+
+
+
+
 ## 切片
 Rust 提供了一种不持有所有权的数据类型：切片（slice）
 
