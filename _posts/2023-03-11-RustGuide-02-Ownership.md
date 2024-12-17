@@ -626,7 +626,7 @@ fn main() {
 
 ## 修复所有权常见的错误
 
-1 Fixing an Unsafe Program: Returning a Reference to the Stack
+* 1 Fixing an Unsafe Program: Returning a Reference to the Stack
 
 ```rust
 fn return_a_string() -> &String {
@@ -658,6 +658,51 @@ fn return_a_string(output: &mut String) {
     output.replace_range(.., "Hello World");
 }
 ```
+
+
+* 2 Fixing an Unsafe Program: Not Enough Permissions (权限不足)
+
+```rust
+// Question
+fn stringify_name_with_title(name: &Vec<String>) -> String {
+    name.push(String::from("Esq."));  // 没有写的权限，所以报错
+    let full = name.join(" ");
+    full
+}
+
+
+
+// 方案一：使用 clone() 解决, 此方案弊端是内存有些浪费
+fn main() {
+    let name = vec![String::from("Ferris")];
+    let first = &name[0];
+    let full = stringify_name_with_title(&name);
+    println!("{}", first);
+    println!("{}", full);
+    println!("{:?}", name);
+
+}
+fn stringify_name_with_title(name: &Vec<String>) -> String {
+    let mut name_clone = name.clone();   
+    name_clone.push(String::from("Esq."));  
+    let full = name_clone.join(" ");
+    full
+}
+
+
+// 方案二：使用 join() 解决
+fn stringify_name_with_title(name: &Vec<String>) -> String {
+    let mut full = name.join(" "); // join 返回一个新 String
+    full.push_str("Esq.");
+    full
+}
+```
+
+* 3 Fixing an Unsafe Program: Aliasing and Mutating a Data Structure (同时启用别名和可变性)
+
+
+
+
 
 
 
