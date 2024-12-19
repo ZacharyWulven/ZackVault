@@ -700,10 +700,71 @@ fn stringify_name_with_title(name: &Vec<String>) -> String {
 
 * 3 Fixing an Unsafe Program: Aliasing and Mutating a Data Structure (同时启用别名和可变性)
 
+```rust
+// Question
+fn add_big_strings(dst: &mut Vec<String>, src: &[String]) {
+    // 本来 dst 是可变引用，由于下边行走完就有了一个引用指向 dst 里的元素，导致 dst 失去了写的权限
+    // ，失去了可变性
+    let largest = dst.iter().max_by_key(|s| s.len()).unwrap();
+
+    for s in src {
+        if s.len() > largest.len() {
+            dst.push(s.clone());
+        }
+    }
+}
+
+// 方案一: 使用 clone() 解决，弊端是 clone 涉及浪费内存
+fn add_big_strings(dst: &mut Vec<String>, src: &[String]) {
+    // 本来 dst 是可变引用，由于下边行走完就有了一个引用指向 dst 里的元素，导致 dst 失去了写的权限
+    // ，失去了可变性
+    let largest = dst.iter().max_by_key(|s| s.len()).unwrap().clone();
+
+    for s in src {
+        if s.len() > largest.len() {
+            dst.push(s.clone());
+        }
+    }
+}
 
 
+// 方案二: 创建新的 Vec，相较于方案一更浪费内存 
+fn add_big_strings(dst: &mut Vec<String>, src: &[String]) {
+    // 本来 dst 是可变引用，由于下边行走完就有了一个引用指向 dst 里的元素，导致 dst 失去了写的权限
+    // ，失去了可变性
+    let largest = dst.iter().max_by_key(|s| s.len()).unwrap();
+
+    let to_add = src.iter()
+        .filter(|s| s.len() > largest.len())
+        .cloned().collect();
+
+    dst.push(to_add);
 
 
+}
+
+// 方案三: 使用 len()
+fn add_big_strings(dst: &mut Vec<String>, src: &[String]) {
+    // 本来 dst 是可变引用，由于下边行走完就有了一个引用指向 dst 里的元素，导致 dst 失去了写的权限
+    // ，失去了可变性
+    let largest_len = dst.iter().max_by_key(|s| s.len()).unwrap().len();
+
+    for s in src {
+        if s.len() > largest_len {
+            dst.push(s.clone());
+        }
+    }
+
+}
+```
+
+* 4 Fixing an Unsafe Program: Copying vs. Moving Out of a Collection
+  - 从一个集合 Copy 一个元素，或叫移除一个元素的所有权
+
+```rust
+
+
+```
 
 
 
