@@ -626,7 +626,7 @@ fn main() {
 
 ## 修复所有权常见的错误
 
-* 1 Fixing an Unsafe Program: Returning a Reference to the Stack
+### 1 Fixing an Unsafe Program: Returning a Reference to the Stack
 
 ```rust
 fn return_a_string() -> &String {
@@ -660,7 +660,7 @@ fn return_a_string(output: &mut String) {
 ```
 
 
-* 2 Fixing an Unsafe Program: Not Enough Permissions (权限不足)
+### 2 Fixing an Unsafe Program: Not Enough Permissions (权限不足)
 
 ```rust
 // Question
@@ -698,7 +698,7 @@ fn stringify_name_with_title(name: &Vec<String>) -> String {
 }
 ```
 
-* 3 Fixing an Unsafe Program: Aliasing and Mutating a Data Structure (同时启用别名和可变性)
+### 3 Fixing an Unsafe Program: Aliasing and Mutating a Data Structure (同时启用别名和可变性)
 
 ```rust
 // Question
@@ -758,15 +758,50 @@ fn add_big_strings(dst: &mut Vec<String>, src: &[String]) {
 }
 ```
 
-* 4 Fixing an Unsafe Program: Copying vs. Moving Out of a Collection
-  - 从一个集合 Copy 一个元素，或叫移除一个元素的所有权
+### 4 Fixing an Unsafe Program: Copying vs. Moving Out of a Collection（从一个集合 Copy 一个元素，或叫移除一个元素的所有权）
+
 
 ```rust
+// Question
+fn main() {
+    // Copy Trait
+    let v: Vec<i32> = vec![0, 1, 2];
+    let n_ref: &i32= &v[0];
+    let n: i32 = *n_ref; // 由于是 i32 类型，这里会发生 Copy
 
-
+    // Move
+    let v: Vec<String> = vec![String::from("Hello world")];
+    let n_ref: &String= &v[0];
+    /*
+        下边 error: 无法移动, 引用是没有所有权的, 想通过解引用获得所有权是不行的
+        下边发生的实际是想要获得所有权，而引用是没有所有权的
+     */
+    let n: String = *n_ref;
+}
 ```
 
 
+* 如果一个值不拥有堆数据，那么它可以在不移动的情况下被复制
+    - 一个 `i32` 不拥有堆数据，因此可以在不移动的情况下被复制
+    - 一个 `String` 拥有堆数据，因此`不能`在不移动的情况下被复制
+    - 一个 `&String` 不拥有堆数据，因此可以在不移动的情况下被复制
+
+* 修复方案: 使用 `clone()` 解决
+
+```rust
+fn main() {
+    // Copy Trait
+    let v: Vec<i32> = vec![0, 1, 2];
+    let n_ref: &i32= &v[0];
+    let n: i32 = *n_ref; // 由于是 i32 类型，这里会发生 Copy
+
+    // Move
+    let v: Vec<String> = vec![String::from("Hello world")];
+    let n_ref: String= v[0].clone(); // 使用 clone() 解决
+
+}
+
+```
 
 
 ## 切片
