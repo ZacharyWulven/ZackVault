@@ -833,8 +833,39 @@ fn get_first(name: &(String, String)) -> &String {
 }
 ```
 
+* 6 Fixing an Unsafe Program: Mutating Different Array Elements
 
 
+```rust
+// 报错 case
+fn main() {
+    let mut a = [0, 1, 2, 3];
+    let x = &mut a[1]; // 可变借用，这行走完，a 失去所有权限，只有 x 有权限
+
+    *x += 1;
+
+    let y = &a[2];     // 不可变借用，由于 a 没有任何权限了，所以这里也不可能给予读权限，所以报错
+    *x += *y;          // 可变借用持续到这行结束，所以在此之前不能有不可变借用
+
+    println!("{a:?}");
+}
+```
+
+
+```rust
+// 修复方案
+fn main() {
+    let mut a = [0, 1, 2, 3];
+
+    let y = a[2];
+
+    let x = &mut a[1];  // 可变借用，这行走完，a 失去所有权限，只有 x 有权限
+
+    *x += y;             // 可变借用持续到这行结束，所以在此之前不能有不可变借用
+
+    println!("{a:?}");
+}
+```
 
 
 
