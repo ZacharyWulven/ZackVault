@@ -995,9 +995,35 @@ fn first_word(s: &str) -> &str {
 }
 ```
 
+* Slice 是特殊的引用类型，因为他们是 `fat` 指针，带有元数据
+
+![image](/assets/images/rust/slice_str.png)
+
+
+![image](/assets/images/rust/slice_o.png)
+
+
+
+* 思考题：下边代码能否通过编译?
+
+```rust
+fn main() {
+    let mut s = String::from("hello");
+    for &item in s.as_bytes().iter() { // 这里借用为不可变引用
+        if item == b'l' {
+            s.push_str(" world");  // 报错：这里又借用为可变引用
+        }
+    }
+    println!("{}", s);
+}
+```
+
+
 ### 其他类型的切片
 * 数组切片
 ```rust
 let a = [1, 2, 3, 4, 5];
 let sliceA = &a[1..3];  // sliceA 的类型是 &[i32]，存储了一个指针和一个长度
 ```
+
+
