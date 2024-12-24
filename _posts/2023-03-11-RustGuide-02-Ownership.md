@@ -800,8 +800,42 @@ fn main() {
     let n_ref: String= v[0].clone(); // 使用 clone() 解决
 
 }
-
 ```
+
+* 5 Fixing an Unsafe Program: Mutating Different Tuple Fields（修改 Tuple 不同字段）
+
+```rust
+// 没有问题的 case
+
+fn main() {
+    let mut name = (String::from("Ferris"), String::from("Rustacean"));
+    // 下边这句走完 name 对第一个元素就不具备写权限了，同时 name 失去了对整个 tuple 的写权限
+    let first = &name.0;
+    name.1.push_str(", Esq."); // 没有问题，但 name.1 依然有写权限
+    println!("{first}, {}", name.1);
+}
+```
+
+
+```rust
+// 有问题的 case
+
+fn main() {
+    let mut name = (String::from("Ferris"), String::from("Rustacean"));
+    let first = get_first(&name);
+    // 报错：rust 只看方法签名，get_first 函数返回 &String，所以 rust 认为 name.0 和 name.1 都被不可变借用
+    name.1.push_str(", Esq.");
+    println!("{first}, {}", name.1);
+}
+
+fn get_first(name: &(String, String)) -> &String {
+    &name.0
+}
+```
+
+
+
+
 
 
 ## 切片
