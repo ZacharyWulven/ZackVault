@@ -121,6 +121,15 @@ fn test_tuple_sturct() {
 * 适用场景：需要在某个类型上实现某个 trait，但是在里面又没有想要存储的数据
 
 
+```rust
+struct AlwaysEqual;
+
+fn main() {
+    let subject = AlwaysEqual;
+}
+```
+
+
 ## struct 数据的所有权
 * 以 User 为例
 1. name 和 email 的类型是 String 而不是 &str，相当于持有对 name 和 email 的所有权
@@ -176,7 +185,9 @@ fn main() {
          
      */
     println!("{:#?}", rectangle);
-
+    
+    // 或这样打印
+    println!("{rectangle:#?}");
 }
 
 fn area(width: u32, length: u32) -> u32 {
@@ -199,6 +210,11 @@ fn area_struct(rect: &Rectangle) -> u32 {
 }
 
 ```
+
+
+> Tips：`println!("{rectangle:#?}")`
+{: .prompt-info }
+
 
 ### println! 这宏的格式化方法有多种
 * std::fmt::Display 即 `println!("{}", black.0)`
