@@ -345,7 +345,8 @@ impl Rectangle {
 }
 ```
 
-* 2
+* 2 借用 struct 字段
+
 
 ```rust
 struct Point {
@@ -369,6 +370,12 @@ fn main() {
     println!("{}", p.y);
 }
 ```
+
+![image](/assets/images/rust/py.png)
+
+
+> Tips: `let x = &mut p.x` 后，`p` 和 `p.x` 将失去所有权限，但 `p.y` 仍然是可变的，保持原有权限
+{: .prompt-info }
 
 
 # 6 枚举与模式匹配
@@ -629,7 +636,8 @@ let v = 0u8; // 定义一个 u8 类型
 match v {
     1 => println!("one"),
     2 => println!("two"),
-    _ => (), //使用 _ 通配符代替。_ 通配符必须在最后一行写。它的代码是()一个空元组，即什么也不做
+    // other => println!("other {:#?}", other),   // 其他 case 打印 other
+    _ => (), // 或者使用 _ 通配符代替。_ 通配符必须在最后一行写。它的代码是()一个空元组，即什么也不做
 }
 ```
 
