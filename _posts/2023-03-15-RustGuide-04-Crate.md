@@ -22,8 +22,9 @@ tags: [Rust, Rust Getting Start]
 ## Package 和 Crate
 
 ### Crate 类型
-1. binary，二进制的，可执行的，例如：`main 函数` 就是 binary crate。一个 Package 可包含多个
-2. library 库，一个 Package 可包含 0-1 个 library crate
+1. binary，二进制的，可执行的，需要有 `main 函数(为其入口点)`。一个 `Package` 可包含多个 `binary crate`
+2. library 库，`不可执行`，没有 `main 函数`。一个 `Package` 可包含 `0-1 个 library crate`
+
 
 ### Crate Root
 * 它是源代码文件
@@ -31,7 +32,7 @@ tags: [Rust, Rust Getting Start]
 * Crate 上边是 Package
 
 ### Package
-* 包含一个 Cargo.toml， 它描述了如何构建这个 Crate
+* 包含一个 `Cargo.toml`， 它描述了如何构建这个 Crate
 * 只能包含 0-1 个 library crate
 * 可以有任意数量的 binary crate
 * 必须至少包含一个 crate （binary 或 library）
@@ -39,6 +40,11 @@ tags: [Rust, Rust Getting Start]
 ### 新建一个 Package
 ```
 $ cargo new package
+```
+
+### 新建一个 Lib 的 Package
+```
+$ cargo new package --lib
 ```
 
 ### Cargo 惯例
@@ -79,6 +85,8 @@ $ cargo new package
 * Module 可以嵌套
 * Module 可以包含其他项（struct、enum、常量、trait、函数等）的定义
 
+* 嵌套结构展示
+
 ```rust
 // file: src/lib.rs
 
@@ -104,6 +112,22 @@ mod front_of_house {
 > `src/main.rs（这是一个 binary crate）` 和 `src/lib.rs（这是一个 library crate）` 叫做 crate roots，这俩文件都形成了 `crate 它位于模块树的根部`
 {: .prompt-info }
 
+
+### 自定义 Module
+
+#### 现在考虑我们要创建一个 models 模块，models 模块下有 enums 子模块,  应该如何创建？
+
+* rust 会从三个地方找这个 modules 模块
+ 1. inline 模式：在声明模块的地方（当前文件）找是否有大括号
+ 2. 声明到 models.rs 里
+ 3. 找 models/mod.rs 文件
+
+
+![image](/assets/images/rust/crate_mod.png)
+
+* 结构如上图：
+  1. 创建 models.rs 文件和 models 文件夹
+  2. 创建 models/enums.rs 文件
 
 
 
@@ -379,6 +403,7 @@ use rand::Rng;
 1. 如果使用同一个包或模块下多个条目
 2. 可以使用嵌套路径在同一行内将上述条目进行引入
 3. 格式：路径相同部分::{路径差异部分}
+
 
 ```rust
 use std:: { collections::HashMap, fmt::Result, io::Result as IOResult};
