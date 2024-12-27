@@ -666,3 +666,63 @@ match v {
 
 > 可以把 if let 看作是 match 的语法糖，即只根据某一个模式来运行代码，其他的可能就忽略了
 {: .prompt-info }
+
+
+## 所有权相关
+
+### 1 能通过编译
+
+
+```rust
+fn main() {
+    let opt = Some(String::from("Hello world"));
+
+    match opt {
+        Some(_) => println!("Some"),
+        None => println!("None"),
+    }
+
+    println!("{opt:?}");
+}
+```
+
+### 2 不能通过编译
+
+```rust
+fn main() {
+    let opt = Some(String::from("Hello world"));
+
+    match opt {
+        // 这里发生了移动
+        Some(s) => println!("{s}"),
+        None => println!("None"),
+    }
+    println!("{opt:?}"); // 不能再使用 opt 
+}
+```
+
+* 不能通过编译所有权情况
+
+![image](/assets/images/rust/enum_move.JPG)
+
+> 上边 `Some(s)` 处发生了 `move`, 而后续的打印需要 `opt` 有读权限，但是它没有，所以导致后边不能再使用 `opt` 了
+{: .prompt-info }
+
+#### 修复方案：使用引用 `match &opt`
+
+```rust
+fn main() {
+    let opt = Some(String::from("Hello world"));
+
+    // 这里使用引用解决, 不发生 move
+    match &opt { 
+        Some(s) => println!("{s}"),
+        None => println!("None"),
+    }
+    println!("{opt:?}");
+}
+```
+
+* 修复方案的所有权情况
+
+![image](/assets/images/rust/enum_mv_fix.JPG)
