@@ -130,12 +130,111 @@ mod front_of_house {
   2. 创建 models/enums.rs 文件
 
 
+* 添加第三方库依赖: `serde`
+
+
+```
+$ cargo add serde
+```
+
+#### csv demo
+
+```rust
+// file: src/main.rs
+use crate::models::structs::HousePrice;
+use crate::models::enums::YesNo;
+
+fn main() {
+    println!("Hello, world!");
+    let y = crate::m1::m2::method_1();
+
+    let house_price = HousePrice {
+        price: 1000,
+        area: String::from("Center"),
+        bed_rooms: 6,
+        main_road: YesNo::No
+    };
+
+    // read_csv("ss")
+}
+
+mod models;
+
+mod m1 {
+    pub mod m2 {
+         pub fn method_1() {
+             println!("Method 1");
+         }
+    }
+}
+
+mod x1 {
+    mod x2 {
+        use crate::x1::x2;
+
+        fn method_2() {
+            super::super::m1::m2::method_1();
+            println!("call m1::m2::Method 1");
+        }
+
+        fn method_3() {
+            // x2::method_2();
+            self::x2::method_2();
+        }
+    }
+}
+
+// ------ file: src/lib.rs
+pub mod models;
+
+pub mod functions;
+
+
+// ------ file: src/models.rs
+pub mod enums;
+
+pub mod structs;
+
+
+// ------ file: src/functions.rs
+use crate::models::structs::HousePrice;
+use csv::{Writer, ReaderBuilder, Reader};
+
+pub fn read_csv(path: String) -> Vec<HousePrice> {
+    let mut rdr = Reader::from_path(path).unwrap();
+    vec![]
+}
+
+// ------ file: src/models/enums.rs
+pub enum YesNo {
+    Yes,
+    No
+}
+
+
+// ------ file: src/models/structs.rs
+
+use crate::models::enums::YesNo;
+
+pub struct HousePrice {
+    pub price: u32,
+    pub area: String,
+    pub bed_rooms: u32,
+    pub main_road: YesNo,
+}
+```
+
+* csv demo 目录结构
+
+![image](/assets/images/rust/cvs.png)
+
+
 
 ## Path（路径）
 * 为了在 Rust 中找到某个条目，需要使用 Path，类似命名空间
 * Path 的两种形式
 1. 绝对路径：从 crate root 开始，使用 crate 名或字面值 crate
-2. 相对路径：从当前模块开始，使用 self（本身），super（上一级） 或当前模块的标识符
+2. 相对路径：从当前模块开始，`使用 self（本身），super（上一级） 或当前模块的标识符`
 * Path 至少有一个标识符组成，如果有多个标识符使用两个冒号分隔，::
 
 ### 私有边界（private boundary）
