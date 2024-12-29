@@ -363,6 +363,24 @@ fn main() {
 * 如果想获取字节，使用 bytes() 方法
 * 如果想获取字形库，这个比较复杂，标准库没有提供
 
+
+```rust
+    let hello = "Здравствуйте";
+
+    // 一个字母（Unicode 标量值）占
+
+    println!("Bytes");
+    for byte in hello.bytes() { // 以字节形式
+        println!("byte {}", byte);  // 208 ...
+    }
+
+    for char in hello.chars() { // 以 Unicode 标量值形式
+        println!("char {}", char);  // З ...
+    }
+```
+
+
+
 ### String 不简单
 * Rust 选择将正确处理 String 数据作为所有 Rust 程序的默认行为
 1. 即程序员需要在处理 UTF-8 前投入更多经历
@@ -410,6 +428,11 @@ println!("{:#?}", scores);
     // zip 可以创建一个元组的数组
     let scores2: HashMap<_, _> = team.iter().zip(init_score.iter()).collect(); 
     println!("{:#?}", scores2);  // // {"Blue": 10, "Yellow": 50}
+    
+    
+    // or
+    let vec = vec![("key1", "value1"), ("key2", "value2")];
+    let map = vec.into_iter().collect::<HashMap<_, _>>();
 ```
 
 ### HashMap 的所有权
@@ -453,6 +476,9 @@ println!("{:#?}", scores);
         Some(s) => println!("team score is {}", s),
         None => println!("team is not exist"),
     }
+    
+    // 补充：如果没有值，默认为 0
+    let score = score_map.get(&team_name).copied().unwrap_or(0);
 ```
 
 ### 遍历 HashMap
@@ -514,10 +540,10 @@ case2：Key 不存在
 ```
 
 
-### Hash 函数
-* 默认情况下，HashMap 使用加密功能强大的 Hash 函数，可以抵抗拒绝服务（DoS）攻击
+### Hashing 函数
+* 默认情况下，HashMap 使用加密功能强大的 SipHash 函数，可以抵抗拒绝服务（DoS）攻击，但不是最快的
 1. 不是可用的最快的 Hash 算法
 2. 但具有更好的安全性
 
-* 可以指定不同的 hasher 来切换到另一个函数
+* 可以指定不同的 hasher（实现 BuildHasher Trait）来切换到另一个 Hashing 函数
 1. hasher 就是指实现了 BuildHasher trait 的类型
