@@ -114,6 +114,28 @@ tags: [Rust, Rust Getting Start]
     }
 ```
 
+
+### 通过 `iter()` 遍历 Vector 中的值
+* `iter()` 返回的即一个指针
+
+
+![image](/assets/images/rust/vec_iter.png)
+
+
+### 通过 `iter()` 遍历的所有权情况
+* 遍历时会丧失 `v` 的写权限
+* 而 `v.push` 需要 `v` 有写权限, 所以下边报错
+ 
+
+![image](/assets/images/rust/vec_iter2.png)
+
+
+### 不使用指针，而通过 `Range` 遍历 Vector 中的值
+
+
+![image](/assets/images/rust/vec_range.png)
+
+
 ### 使用 enum 在 Vector 中存储多个类型的数据
 * enum 变体可以附加不同类型的数据
 
@@ -134,6 +156,46 @@ fn example() {
     ];
     
 }
+```
+
+
+### 思考题: 下边代码能否通过编译
+
+```rust
+fn main() {
+    let mut v = Vec::new();
+    let s = String::from("Hello ");
+    v.push(s);   // 这里发生了 move
+    v[0].push_str("world");
+    println!("original: {}", s);   // Error：v.push(s) 时，s 已被移动
+    println!("new: {}", v[0]);
+}
+```
+
+### 思考题：下边代码能否通过编译
+
+```rust
+    let v = vec![String::from("hello ")];
+    let mut s = v[0];            // Error: move occurs because value has type `String`, which does not implement the `Copy` trait
+    // let mut s = v[0].clone();    // 使用 clone 解决
+    s.push_str("world");
+    println!("new: {}", s);
+```
+
+### 思考题 
+* v2 的元素实际是引用类型
+
+```rust
+    let mut v = vec![1,2,3];
+    let mut v2 = Vec::new();
+    for i in &mut v {
+        v2.push(i);
+    }
+    *v2[0] = 5;
+
+    let a = *v2[0];
+    let b = v[0];
+    println!("a = {}, b = {}", a, b);  // 5, 5
 ```
 
 
