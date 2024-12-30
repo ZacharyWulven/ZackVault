@@ -136,11 +136,13 @@ fn main() {
     });
 ```
 
+### 出现错误时使程序产生 `panic` 的常用快捷方式
 
-### unwrap 方法
-* 是 match 的一个快捷方法
-* 如果 Result 的结果是 Ok，则返回 Ok 里的值
-* 如果 Result 的结果是 Err，则调研 panic! 这个宏
+
+#### 1. unwrap 方法
+* 是 match 的一个快捷方法。用于提取 `Option` 或 `Result` 类型内部的值
+  - 如果 Result 的结果是 Ok，则返回 Ok 里的值
+  - 如果 Result 的结果是 Err，则调研 panic! 这个宏
 * 缺点是错误信息不能自定义
 
 ```rust
@@ -157,7 +159,7 @@ fn main() {
     let f = File::open("hello.txt").unwrap();
 ```
 
-### expect 方法
+#### 2. expect 方法
 * 与 unwrap 方法类似，但是可以指定错误信息
 
 ```rust
@@ -198,7 +200,7 @@ fn read_username_from_file() -> Result<String, io::Error> {
 ```
 
 ### ? 运算符
-1. 它是传播错误的快捷方式
+1. 它是传播错误的快捷方式，它与 `match` 作用是类似的
 
 
 ```rust
@@ -269,6 +271,57 @@ fn read_username_from_file_chain() -> Result<String, io::Error> {
 {: .prompt-info }
 
 
+### 自定义错误例子，实现 `From Trait`
+
+```rust
+use std::fs::File;
+use std::io::{self, ErrorKind, Error, Read};
+use std::num::ParseIntError;
+
+#[derive(Debug)]
+pub enum MyError {
+    Io(io::Error),
+    ParseInt(ParseIntError),
+    Other(String),
+}
+
+// io::Error 可以通过 ? 转化为 MyError
+impl From<io::Error> for MyError {
+    fn from(err: io::Error) -> Self {
+        MyError::Io(err)
+    }
+}
+
+impl From<ParseIntError> for MyError {
+    fn from(err: ParseIntError) -> Self {
+        MyError::ParseInt(err)
+    }
+}
+
+fn read_username_from_file2() -> Result<String, MyError> {
+    let mut name = String::new();
+    let file = File::open("hello.txt")?.read_to_string(&mut name)?;
+    let num = "55".parse::<i32>()?; // 通过 From<ParseIntError> for MyError 进行转化
+    Ok(name)
+}
+```
+
+### 什么时候可以使用 ? 运算符
+
+> 函数的返回类型与 ? 运算符所作用的值的类型兼容。? 可用于返回类型为 `Result`, `Option` 或实现了 `FromResidual` 的类型的函数内
+{: .prompt-info }
+
+
+### ? 运算符作用与 `Option` 的情况
+
+```rust
+fn last_char_of_first_line(text: &str) -> Option<char> {
+    // next()? 使用 ? 运算符
+    text.lines().next()?.chars().last()
+}
+```
+
+
 ### ? 运算符与 main 函数
 * main 函数的默认返回类型是 `()`，即空元组，什么也不返回
 * main 函数的类型也可以是 `Result<T,E>`
@@ -278,9 +331,14 @@ fn read_username_from_file_chain() -> Result<String, io::Error> {
 ```rust
 fn main() -> Result<(), Box<dyn Error>> {
     let f = File::open("hello.txt")?;
-    Ok(()) 
+    Ok(()) // 如果 main 函数以这 Ok 结束运行，程序以 0 退出。否则以其他值退出 1 或 -1 等
 }
 ```
+
+> main 函数可返回任何实现了 `std::process::Termination` 这个 Trait 的类型。`Termination` 定义了一个 `report` 函数，这个函数它返回 就是 `ExitCode`
+{: .prompt-info }
+
+
 
 ## 何时应该使用 panic
 * 调用 panic 宏就相当于发生一个不可恢复的错误
@@ -320,6 +378,9 @@ let home: IpAddr = "127.0.0.1".parse().unwrap();
 3. 如果失败是可预期的，这时最好返回 Result
 4. 当你代码对某些值进行操作，首先应该验证这些值的合法性，如果不合法可以使用 panic
 
+
+> 可参考 Rust Book：Error Handling - To panic! or not to panic!
+{: .prompt-info }
 
 ### 为验证创建自定义类型
 * 创建新类型，把验证逻辑放在构造实例的函数里
