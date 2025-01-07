@@ -244,16 +244,26 @@ fn main() {
 }
 ```
 
+### RustRover Tips
+
+![image](/assets/images/rust/rover_tips.png)
+
+
 ### 实现 trait 的约束
-* 想要在某个类型上实现某些 trait 它有一些前提条件
-1. 这个类型或这个 trait 是在本地 crate 里定义的
-* 无法为外部类型来实现外部 trait，例如在本地项目为标准库里 Vector 实现标准库里的 Display trait 这是不行的
+* 想要在某个类型上实现某些 `Trait` 它有一些前提条件
+1. 这个`类型`或这个 `Trait` 其中之一，是在本地 `crate` 里定义的, 就可以实现该 `Trait`
+* 无法为外部类型来实现外部 `Trait`，例如在本地项目为标准库里 Vector 实现标准库里的 Display Trait 这是不行的
 1. 这个限制即程序属性的一部分（也就是一致性）
-2. 更具体的说：它叫孤儿原则，之所以这么命名是因为它的父类型并没有定义在当前库里。
+2. 更具体的说：它叫`孤儿原则`，之所以这么命名是因为它的父类型并没有定义在当前库里。
 3. 此规则可以保证其他人的代码不能破坏你写的代码，vice verse
 4. 如果没有这个规则，那么两个 crate 就可以为同一类型实现同一 trait，Rust 就不知道该使用哪个实现了
 
+
 > 这里在 OC 里是相当于会覆盖，OC 本质是放到数组前边了
+{: .prompt-info }
+
+
+> 孤儿原则要求一个 `类型`或一个 `Trait` 其中之一，是在本地 `crate` 里定义的, 就可以实现该 `Trait`
 {: .prompt-info }
 
 
@@ -461,10 +471,6 @@ println!("max_word one: {}", max_word);
 ```
 
 
-
-
-
-
 ### 使用 trait bound 有条件的实现方法
 * 在使用泛型参数的 impl 块上使用 trait bound，我们可以有条件为实现了特定 trait 的类型来实现方法
 
@@ -497,12 +503,16 @@ impl<T: Display + PartialOrd> Pair<T>  {
 }
 ```
 
+
+### blanket implementations
+
 * 也可以为实现了其他 trait 的任意类型有条件的实现某个 trait
 * 为满足 trait bound 的所有的类型上实现 trait 叫覆盖实现（blanket implementations）
 
-```rust
-// 对所有满足实现了 fmt::Display + ?Sized 的类型 T 都实现了 ToString 这个 trait
+* 下边代码：对所有满足实现了 fmt::Display + ?Sized 的类型 T 都实现了 ToString 这个 trait
 
+
+```rust
 impl<T: fmt::Display + ?Sized> ToString for T {
     // A common guideline is to not inline generic functions. However,
     // removing `#[inline]` from this method causes non-negligible regressions.
