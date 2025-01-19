@@ -245,6 +245,10 @@ fn it_work_result() -> Result<(), String>{
 {: .prompt-info }
 
 
+> 断言某个操作返回 `Err`，不要在那个 `Result` 上使用 `?`, 而应该使用 `assert!(value.is_err())`
+{: .prompt-info }
+
+
 ## 控制测试的运行方式
 * cargo test 命令，在测试模式下编译代码并生成一个二进制文件
 * 可以添加命令行参数来改变 cargo test 的行为
