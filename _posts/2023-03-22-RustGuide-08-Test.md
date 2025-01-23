@@ -312,6 +312,13 @@ fn it_work_result() -> Result<(), String>{
 $ cargo test -- --ignored
 ```
 
+* 执行全部的测试函数（包括 ignore 的）
+
+```shell
+$ cargo test -- --include-ignored
+```
+
+
 ## 测试的组织
 * Rust 对测试的分类
 1. 单元测试
@@ -432,6 +439,9 @@ $ cargo test --test integration_tests
 * 在 `tests` 目录下创建，`common` 文件夹，在 `common` 文件夹里创建 `mod.rs` 这样 Rust 不会把其当为测试代码，`common` 相当于是一个模块，
   * 可以放一些通用函数在这里
   * 这样 `tests` 目录下的目录不会被编译为单独的 `crate`，只作为模块处理
+  
+  
+![image](/assets/images/rust/test_com.png)
 
 
 ```rust
