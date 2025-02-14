@@ -172,7 +172,6 @@ mod tests {
 * 另一个限制是只能接收一个 u32 类型参数和 u32 类型的返回值，可通过引入多个泛型参数进行解决
 
 
-
 ## 使用闭包捕获上下文环境
 * 闭包可以捕获他们所在的环境
 
@@ -180,16 +179,70 @@ mod tests {
 {: .prompt-info }
 
 
-### 捕获值的方式
-* 与函数获得参数的三种方式一样
-1. 取得所有权：对应 `FnOnce trait`，捕获时将变量的所有权 `move` 到自己的作用域内
-2. 可变借用：对应 `FnMut`，捕获可变借用，并对其值进行修改
-3. 不可变借用：对应 `Fn`，捕获不可变借用
+### 捕获值的方式(与函数获得参数的方式一样，3 种)
+#### 1 取得所有权，对应 `FnOnce trait`：
+* 捕获时将变量的所有权 `move` 到自己的作用域内。适用于只能被调用一次的闭包
+* 所有闭包都至少实现了 `FnOnce`，因为所有闭包都可至少调用一次
+* 适用 case：如果一个闭包将捕获的值移出其主体（例如，通过将值返回或传递给其他函数），那么它只能实现 `FnOnce`，
+因为一旦值被移出，闭包就不能再次调用
+
+
+```rust
+fn main() {
+    println!("capture_three begin");
+
+    let mut x = vec![1, 2, 3];
+    println!("Before defining closure: {x:?}");
+
+    // 新线程获得了 x 的所有权
+    thread::spawn(move || println!("From thread: {x:?}"))
+        .join()
+        .unwrap();
+}
+```
+
+* 2 可变借用：对应 `FnMut`，捕获可变借用，并对其值进行修改
+
+```rust
+fn main() {
+
+    let mut x = vec![1, 2, 3];
+    println!("Before defining closure: {x:?}");
+
+    let mut borrows_mutablely = || x.push(5);
+    
+    // println!("Before calling closure x is: {x:?}");  不能打印，因此此时有一个可变的引用
+    borrows_mutablely();
+    println!("After calling closure x is: {x:?}"); // [1, 2, 3, 5]
+}
+```
+
+* 3 不可变借用：对应 `Fn`，捕获不可变借用
+
+```rust
+fn main() {
+    let mut x = vec![1, 2, 3];
+    println!("Before defining closure: {x:?}");
+
+    let only_borrows = || println!("From closure: {x:?}");
+    println!("Before calling closure x is: {x:?}");
+    only_borrows();
+    println!("After calling closure x is: {x:?}");
+}
+```
 
 * 在创建闭包时，通过闭包对环境值的使用，Rust 推断出具体使用哪个 trait
 1. 所有闭包都实现了 `FnOnce`，因为所有闭包都可至少调用一次
 2. 而那些不需要移动被捕获的变量的闭包实现了 `FnMut`
 3. 那些不需要对捕获变量进行修改的闭包实现了 `Fn`
+
+ 
+* 闭包体可以对捕获的值进行的操作
+1. 将捕获的值移出闭包
+2. 修改捕获的值
+3. 即不移动，也不修改值
+4. 完全不从环境中捕获值
+
 
 > 3 个 `trait` 有层级关系，所有实现了 `Fn` 的闭包都实现了 `FnMut`，而所有实现了 `FnMut` 的闭包都实现了 `FnOnce`
 {: .prompt-info }
