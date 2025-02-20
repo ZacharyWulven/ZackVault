@@ -598,7 +598,33 @@ pub fn search<'a>(query: &str, contents: &'a str) -> Vec<&'a str> {
 ```
 
 ## 性能比较：循环 VS 迭代器
+
 * 零开销抽象（Zero-Cost Abstraction）
 1. 使用抽象时不会引入额外的运行时开销
 2. 迭代器使用了零开销抽象，所以不会引入额外的运行时开销
 
+### 例子
+
+```rust
+fn main() {
+    let buffer: &mut [i32];
+    let coefficients: [i64; 12];
+    let qlp_shift: i16;
+
+    for i in 12..buffer.len()  {
+        let prediction = coefficients.iter()
+            .zip(&buffer[i - 12..i])
+            .map(|(&c, &s)| c * s as i64)
+            .sum::<i64>() >> qlp_shift;
+        let delta = buffer[i];
+        buffer[i] = prediction as i32 + delta;
+    }
+}
+```
+#### 上边代码
+* 编译优化：编译后，这段代码与手写汇编代码几乎一致。由于迭代次数固定为 12 次，编译器进行循环展开，消除了循环控制的开销
+* 快速访问：所有系数都存储在寄存器中，访问速度极快
+* 无运行时开销：没有运行时的边界检查额外开销
+
+> 结论：在 Rust 中可放心使用迭代器和闭包等高级特性，它们提供了更高层次的代码抽象，同时保持着极高的运行时性能，不会带来性能损失
+{: .prompt-info }
