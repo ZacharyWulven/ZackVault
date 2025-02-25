@@ -136,22 +136,28 @@ pub fn add_one(x: i32) -> i32 {
 }
 ```
 
-## pub use
-* 问题 crate 的程序结构在开发时对于开发者很合理，但对于它的使用者不够方便
+## 使用 `pub use` 重新导出
+* 问题: crate 的程序结构在开发时对于开发者很合理，但对于它的使用者不够方便
 1. 开发者会把程序结构分为很多层，使用者想找到这种深层结构中的某个类型很费劲
 2. 麻烦：`my_crate::some_module::another_module::UsefulType`
 3. 方便：`my_crate::UsefulType`
 
-* 解决方案
+* 解决方案: 使用 `pub use` 重新导出
 1. 不需要重新组织内部代码结构
+2. 在有很多嵌套情况下，在顶层重新导出可以显著改善使用改 `crate` 的开发者的体验
+3. 将所依赖的 `crate` 的定义在当前的 `crate` 中重新导出，使这些依赖的定义成为你的 `crate` 公共 API 的一部分
 
-> 使用 pub use 就可以重新导出，创建一个与内部私有结构不同的对外公共结构
+
+> 使用 `pub use` 就可以重新导出，创建一个与内部私有结构不同的对外公共结构
 {: .prompt-info }
+
 
 ```rust
 // lib.rs
 // 使用 pub use 对 PrimaryColor 重新导出
 pub use self::kinds::PrimaryColor;
+pub use self::utils::mix;
+
 
 pub mod kinds {
 
@@ -161,8 +167,22 @@ pub mod kinds {
         Blue,
     }
 
+    pub enum SecondaryColor {
+        Orange,
+        Green,
+        Purple,
+    }
+
 }
 
+pub mod utils {
+    use crate::kinds::*;
+
+    pub fn mix(c: PrimaryColor) -> SecondaryColor {
+        SecondaryColor::Orange
+    }
+
+}
 
 // main.rs
 
@@ -171,6 +191,7 @@ pub mod kinds {
 
 // pub use 后, 这样导入就可以了！
 use publishCrate_14::PrimaryColor;
+use publishCrate_14::mix;
 
 fn main() {
 
