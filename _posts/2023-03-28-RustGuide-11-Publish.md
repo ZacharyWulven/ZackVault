@@ -391,6 +391,8 @@ $ cargo test -p add-one
 > Note：`cargo publish` 没有提供类似 `all` 或 `-p` 的参数，所以对于 `workspace` 中的 `crate`，必须到各自的 `crate` 目录下执行 `cargo publish` 进行单独发布
 {: .prompt-info }
 
+[Demo](https://github.com/ZacharyWulven/Rust_Getting_Start/tree/master/workspace)
+
 
 ## 安装二进制 `crate`
 * 命令 `cargo install`
