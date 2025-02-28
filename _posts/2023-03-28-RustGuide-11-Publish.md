@@ -349,8 +349,12 @@ $ cargo run -p adder
 
 ### 在 `workspace` 中依赖外部 `crate`
 * `workspace` 只有一个 `Cargo.lock` 文件，它在 `workspace` 顶层目录
-1. 这保证 `workspace` 内所有的 `crate` 依赖的版本都是相同的
-2. `workspace` 内所有 `crate` 是相互兼容的
+* 如果 `workspace` 内的 `crate` 指定了同一依赖的不兼容版本，`Cargo` 会分别解析它们，但尽量使用尽可能少的版本
+* `Cargo` 只在保证语义版本规则范围内的兼容性
+    1. 假设一个 `workspace` 内有依赖 `rand 0.8.0`，另一个 `crate` 依赖 `rand 0.8.1` 根据语义版本规则，`0.8.1 与 0.8.0` 是兼容的，所以这个俩 `crate` 都会使用 `0.8.1`（或者更高的兼容版本，比如 `0.8.2`）
+    2. 如果一个 `crate` 依赖 `rand 0.7.0`，另一个依赖 `rand 0.8.0`，这些版本在语义上是不兼容的。因此 `crate` 会为每个 `crate` 使用不同版本的 `rand`
+
+
 
 ```
 [package]
