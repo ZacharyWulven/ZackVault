@@ -19,6 +19,12 @@ tags: [Rust, Rust Getting Start]
 1. 行为与指针相似
 2. 有额外的元数据和功能
 
+* 常见的智能指针：`Box<T>` 和 `Rc<T>` 和 `Ref<T>` 和 `RefMut<T>` 和 `RefCell<T>`
+
+
+> 区别：引用仅借用数据，而智能指针通常拥有数据
+{: .prompt-info }
+
 ## 引用计数（reference counting）智能指针类型
 * 通过记录所有者的数量，使一份数据被多个所有者同时持有
 * 并且在没有任何所有者时自动清理数据
@@ -265,7 +271,8 @@ fn main() {
 ```
 
 ### 解引用`（Deref Coercion）` 与可变性
-* 可使用 `DerefMut trait` 重载可变引用的 `*` （解引用）运算符
+* `Deref` 即对不可变引用的  `*`（解引用）运算符的重载
+* `DerefMut` 即对可变引用的 `*` （解引用）运算符的重载
 * 在类型和 `trati` 满足下列三种情况时，Rust 会执行 `deref coercion`
 1. `T:Deref<Target=U>`（即 T 现实了 Deref trait，而 Deref trait 方法返回类型是 U），允许 &T 转化为 &U
 2. `T:DerefMut<Target=U>`（即 T 现实了 DerefMut trait，而 DerefMut trait 方法返回类型是 U），允许 &mut T 转化为 &mut U
