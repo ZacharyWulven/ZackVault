@@ -26,10 +26,10 @@ description: >- # used by seo meta and the atom feed
   欢迎来到 Nagrand.
 
 # fill in the protocol & hostname for your site, e.g., 'https://username.github.io'
-url: ''
+url: 'https://zacharywulven.github.io'
 
 github:
-  username: Zachary # change to your github username
+  username: ZacharyWulven # change to your github username
 
 twitter:
   username: # change to your twitter username
@@ -51,6 +51,20 @@ google_site_verification: # fill in to your verification string
 
 # ↑ --------------------------
 # The end of `jekyll-seo-tag` settings
+
+# Plugins
+plugins:
+  - jekyll-paginate
+  - jekyll-sitemap
+  - jekyll-archives
+  - jekyll-seo-tag
+  - jekyll-redirect-from
+
+# Enable self-hosted assets
+assets:
+  self_host:
+    enabled: true
+    env: production
 
 google_analytics:
   id: # fill in your Google Analytics ID

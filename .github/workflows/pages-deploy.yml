@@ -56,7 +56,9 @@ jobs:
           bundle install --jobs 4 --retry 3
 
       - name: Build site
-        run: bundle exec jekyll b -d "_site${{ steps.pages.outputs.base_path }}"
+        run: |
+          bundle exec jekyll b -d "_site${{ steps.pages.outputs.base_path }}" --trace
+          touch "_site${{ steps.pages.outputs.base_path }}/.nojekyll"
         env:
           JEKYLL_ENV: "production"
 

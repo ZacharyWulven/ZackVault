@@ -130,6 +130,12 @@ PLATFORMS
 DEPENDENCIES
   html-proofer (~> 3.18)
   http_parser.rb (~> 0.6.0)
+  jekyll (~> 4.3)
+  jekyll-archives
+  jekyll-paginate
+  jekyll-redirect-from
+  jekyll-seo-tag
+  jekyll-sitemap
   jekyll-theme-chirpy (~> 5.3, >= 5.3.2)
   tzinfo (~> 1.2)
   tzinfo-data
